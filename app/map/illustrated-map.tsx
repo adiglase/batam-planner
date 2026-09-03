@@ -1,4 +1,5 @@
 import type { MapPresentation } from "./map-provider";
+import { Badge } from "~/components/ui/badge";
 
 export function IllustratedMap({
   markers,
@@ -8,8 +9,8 @@ export function IllustratedMap({
   return (
     <div className="illustrated-map">
       <div className="map-toolbar" aria-hidden="true">
-        <span>Batam</span>
-        <span>Map preview</span>
+        <Badge variant="secondary">Batam</Badge>
+        <Badge variant="outline">Illustrated map</Badge>
       </div>
       <div className="island island-main" aria-hidden="true" />
       <div className="island island-south" aria-hidden="true" />
@@ -34,7 +35,7 @@ export function IllustratedMap({
           {markers.find(({ id }) => id === focusedDestinationId)?.label ??
             "Explore Batam"}
         </strong>
-        <span>Choose a marker or Destination card to focus it.</span>
+        <span>Selected Destination</span>
       </div>
     </div>
   );

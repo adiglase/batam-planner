@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { ArrowUpRightIcon } from "lucide-react";
+import {
+  ArrowUpRightIcon,
+  ChevronRightIcon,
+  MapPinIcon,
+} from "lucide-react";
 import { Link } from "react-router";
 
 import { Badge } from "~/components/ui/badge";
@@ -122,7 +126,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           <span>Batam Planner</span>
         </Link>
         <Badge className="ml-auto" variant="secondary">
-          No account needed
+          No account
         </Badge>
       </header>
 
@@ -188,16 +192,19 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           value={activeSurface}
           onValueChange={(value) => setActiveSurface(value as Surface)}
         >
-          <TabsList
-            className="grid h-auto w-full grid-cols-3"
-            aria-label="Planning workspace"
-          >
+          <div className="workspace-tabs-shell">
+            <TabsList
+              className="grid h-auto w-full grid-cols-3"
+              variant="workspace"
+              aria-label="Planning workspace"
+            >
             {(["discover", "trip", "itinerary"] as const).map((surface) => (
               <TabsTrigger key={surface} value={surface}>
                 {surface[0].toUpperCase() + surface.slice(1)}
               </TabsTrigger>
             ))}
-          </TabsList>
+            </TabsList>
+          </div>
 
           <TabsContent className="surface-content" value="discover">
             <DiscoverSurface
@@ -239,7 +246,7 @@ function DiscoverSurface({
     <div className="discover-surface">
       <div>
         <p className="eyebrow">Owner-curated Destinations</p>
-        <h1 className="mt-2 text-3xl font-black tracking-tight text-foreground">
+        <h1 className="mt-2 text-3xl font-bold tracking-tight text-foreground">
           Discover Batam
         </h1>
         <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
@@ -274,7 +281,9 @@ function DiscoverSurface({
                 aria-pressed={destination.id === focusedDestination?.id}
                 onClick={() => onFocus(destination.id)}
               >
-                <span className="destination-thumbnail" aria-hidden="true" />
+                <span className="destination-thumbnail" aria-hidden="true">
+                  <MapPinIcon />
+                </span>
                 <span>
                   <strong>{destination.name}</strong>
                   <small>
@@ -282,7 +291,7 @@ function DiscoverSurface({
                   </small>
                 </span>
                 <span className="focus-arrow" aria-hidden="true">
-                  →
+                  <ChevronRightIcon />
                 </span>
               </button>
             ))}
@@ -290,16 +299,10 @@ function DiscoverSurface({
 
           {focusedDestination && (
             <Card>
-              <div
-                className="detail-hero"
-                aria-label="No Destination image available"
-              >
-                <span>Image coming soon</span>
-              </div>
               <CardHeader>
-                <Badge variant="outline">
+                <p className="eyebrow">
                   {focusedDestination.primaryCategory} · {focusedDestination.area}
-                </Badge>
+                </p>
                 <CardTitle>{focusedDestination.name}</CardTitle>
                 <CardDescription>
                   {focusedDestination.description}

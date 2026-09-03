@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { Link } from "react-router";
 
 import type { Route } from "./+types/home";
 import type { Destination } from "~/destinations/destination";
@@ -91,12 +92,12 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <a className="brand" href="/" aria-label="Batam Planner home">
+        <Link className="brand" to="/" aria-label="Batam Planner home">
           <span className="brand-mark" aria-hidden="true">
             B
           </span>
           <span>Batam Planner</span>
-        </a>
+        </Link>
         <span className="no-account-note">No account needed</span>
       </header>
 

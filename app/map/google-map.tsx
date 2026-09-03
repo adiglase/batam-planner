@@ -68,6 +68,7 @@ export function GoogleMap({
     maps: GoogleMapsApi;
     map: GoogleMapInstance;
   } | null>(null);
+  const focusedMarker = markers.find(({ id }) => id === focusedDestinationId);
 
   useEffect(() => {
     let active = true;
@@ -118,14 +119,13 @@ export function GoogleMap({
   }, [mapState, markers, onFocus]);
 
   useEffect(() => {
-    const focusedMarker = markers.find(({ id }) => id === focusedDestinationId);
     if (!mapState || !focusedMarker) return;
 
     mapState.map.setCenter({
       lat: focusedMarker.coordinates.latitude,
       lng: focusedMarker.coordinates.longitude,
     });
-  }, [focusedDestinationId, mapState, markers]);
+  }, [focusedMarker, mapState]);
 
   if (unavailable) {
     return (
@@ -143,8 +143,7 @@ export function GoogleMap({
       <div ref={containerRef} className="google-map" aria-label="Google map of Batam" />
       <div className="map-caption" aria-live="polite">
         <strong>
-          {markers.find(({ id }) => id === focusedDestinationId)?.label ??
-            "Explore Batam"}
+          {focusedMarker?.label ?? "Explore Batam"}
         </strong>
         <span>Traffic-unaware map context</span>
       </div>

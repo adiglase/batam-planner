@@ -1,7 +1,4 @@
-export type Coordinates = {
-  latitude: number;
-  longitude: number;
-};
+import type { Coordinates } from "~/geography/coordinates";
 
 export type TransportMode = "car" | "motorcycle" | "walking";
 

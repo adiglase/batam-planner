@@ -1,12 +1,9 @@
-import type { ComponentType } from "react";
+import type { Coordinates } from "~/geography/coordinates";
 
 export type MapMarker = {
   id: string;
   label: string;
-  coordinates: {
-    latitude: number;
-    longitude: number;
-  };
+  coordinates: Coordinates;
 };
 
 export type MapPresentation = {
@@ -14,5 +11,3 @@ export type MapPresentation = {
   focusedDestinationId: string | null;
   onFocus: (destinationId: string) => void;
 };
-
-export type MapProvider = ComponentType<MapPresentation>;

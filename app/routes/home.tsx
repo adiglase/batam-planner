@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 
 import type { Route } from "./+types/home";
@@ -51,6 +51,19 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   const focusedDestination =
     destinations.find((destination) => destination.id === focusedId) ??
     destinations[0];
+  const mapMarkers = useMemo(
+    () =>
+      destinations.map((destination) => ({
+        id: destination.id,
+        label: destination.name,
+        coordinates: destination.coordinates,
+      })),
+    [destinations],
+  );
+  const focusFromMap = useCallback((destinationId: string) => {
+    setFocusedId(destinationId);
+    setActiveSurface("discover");
+  }, []);
 
   function adjustSplit(delta: number) {
     const layout = phoneLayout ? "mobile" : "desktop";
@@ -99,16 +112,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       >
         <section className="map-region" aria-label="Batam Destination map">
           <ConfiguredMap
-            markers={destinations.map((destination) => ({
-              id: destination.id,
-              label: destination.name,
-              coordinates: destination.coordinates,
-            }))}
+            markers={mapMarkers}
             focusedDestinationId={focusedDestination?.id ?? null}
-            onFocus={(destinationId) => {
-              setFocusedId(destinationId);
-              setActiveSurface("discover");
-            }}
+            onFocus={focusFromMap}
           />
         </section>
 

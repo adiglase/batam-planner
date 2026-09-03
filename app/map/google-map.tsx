@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 
 import type { MapPresentation } from "./map-provider";
 
-type GoogleMapInstance = object;
+type GoogleMapInstance = {
+  setCenter(position: { lat: number; lng: number }): void;
+};
 type GoogleMarkerInstance = {
   addListener(event: "click", listener: () => void): { remove(): void };
   setMap(map: null): void;
@@ -62,43 +64,25 @@ export function GoogleMap({
 }: MapPresentation & { apiKey: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [unavailable, setUnavailable] = useState(false);
+  const [mapState, setMapState] = useState<{
+    maps: GoogleMapsApi;
+    map: GoogleMapInstance;
+  } | null>(null);
 
   useEffect(() => {
     let active = true;
-    const markerInstances: GoogleMarkerInstance[] = [];
-    const listeners: Array<{ remove(): void }> = [];
 
     loadGoogleMaps(apiKey)
       .then((maps) => {
         if (!active || !containerRef.current) return;
 
-        const focusedMarker =
-          markers.find(({ id }) => id === focusedDestinationId) ?? markers[0];
-        const center = focusedMarker
-          ? {
-              lat: focusedMarker.coordinates.latitude,
-              lng: focusedMarker.coordinates.longitude,
-            }
-          : { lat: 1.0456, lng: 104.0305 };
         const map = new maps.Map(containerRef.current, {
-          center,
-          zoom: focusedMarker ? 12 : 10,
+          center: { lat: 1.0456, lng: 104.0305 },
+          zoom: 10,
           mapTypeControl: false,
           streetViewControl: false,
         });
-
-        markers.forEach((marker) => {
-          const instance = new maps.Marker({
-            map,
-            position: {
-              lat: marker.coordinates.latitude,
-              lng: marker.coordinates.longitude,
-            },
-            title: marker.label,
-          });
-          markerInstances.push(instance);
-          listeners.push(instance.addListener("click", () => onFocus(marker.id)));
-        });
+        setMapState({ maps, map });
       })
       .catch(() => {
         if (active) setUnavailable(true);
@@ -106,10 +90,42 @@ export function GoogleMap({
 
     return () => {
       active = false;
-      listeners.forEach((listener) => listener.remove());
-      markerInstances.forEach((marker) => marker.setMap(null));
     };
-  }, [apiKey, focusedDestinationId, markers, onFocus]);
+  }, [apiKey]);
+
+  useEffect(() => {
+    if (!mapState) return;
+
+    const markerInstances = markers.map((marker) => {
+      const instance = new mapState.maps.Marker({
+        map: mapState.map,
+        position: {
+          lat: marker.coordinates.latitude,
+          lng: marker.coordinates.longitude,
+        },
+        title: marker.label,
+      });
+      const listener = instance.addListener("click", () => onFocus(marker.id));
+      return { instance, listener };
+    });
+
+    return () => {
+      markerInstances.forEach(({ instance, listener }) => {
+        listener.remove();
+        instance.setMap(null);
+      });
+    };
+  }, [mapState, markers, onFocus]);
+
+  useEffect(() => {
+    const focusedMarker = markers.find(({ id }) => id === focusedDestinationId);
+    if (!mapState || !focusedMarker) return;
+
+    mapState.map.setCenter({
+      lat: focusedMarker.coordinates.latitude,
+      lng: focusedMarker.coordinates.longitude,
+    });
+  }, [focusedDestinationId, mapState, markers]);
 
   if (unavailable) {
     return (

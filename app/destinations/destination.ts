@@ -1,3 +1,5 @@
+import type { Coordinates } from "~/geography/coordinates";
+
 export type Destination = {
   id: string;
   slug: string;
@@ -5,10 +7,7 @@ export type Destination = {
   primaryCategory: string;
   area: string;
   description: string;
-  coordinates: {
-    latitude: number;
-    longitude: number;
-  };
+  coordinates: Coordinates;
   operationalStatus: "Open" | "Temporarily closed";
   typicalVisitMinutes: number;
   operatingHoursLabel: string;

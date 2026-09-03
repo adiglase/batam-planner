@@ -1,7 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { ArrowUpRightIcon } from "lucide-react";
 import { Link } from "react-router";
 
+import { Badge } from "~/components/ui/badge";
+import { buttonVariants } from "~/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "~/components/ui/card";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "~/components/ui/empty";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "~/components/ui/tabs";
 import type { Route } from "./+types/home";
 import type { Destination } from "~/destinations/destination";
 import { getDestinationRepository } from "~/destinations/sqlite-destination-repository.server";
@@ -98,7 +121,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           </span>
           <span>Batam Planner</span>
         </Link>
-        <span className="no-account-note">No account needed</span>
+        <Badge className="ml-auto" variant="secondary">
+          No account needed
+        </Badge>
       </header>
 
       <div
@@ -158,49 +183,44 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           <span aria-hidden="true" />
         </div>
 
-        <section className="workspace-region">
-          <nav className="surface-tabs" aria-label="Planning workspace" role="tablist">
+        <Tabs
+          className="workspace-region"
+          value={activeSurface}
+          onValueChange={(value) => setActiveSurface(value as Surface)}
+        >
+          <TabsList
+            className="grid h-auto w-full grid-cols-3"
+            aria-label="Planning workspace"
+          >
             {(["discover", "trip", "itinerary"] as const).map((surface) => (
-              <button
-                key={surface}
-                type="button"
-                role="tab"
-                aria-selected={activeSurface === surface}
-                aria-controls={`${surface}-surface`}
-                className="surface-tab"
-                onClick={() => setActiveSurface(surface)}
-              >
+              <TabsTrigger key={surface} value={surface}>
                 {surface[0].toUpperCase() + surface.slice(1)}
-              </button>
+              </TabsTrigger>
             ))}
-          </nav>
+          </TabsList>
 
-          <div className="surface-content">
-            {activeSurface === "discover" && (
-              <DiscoverSurface
-                destinations={destinations}
-                focusedDestination={focusedDestination}
-                onFocus={setFocusedId}
-              />
-            )}
-            {activeSurface === "trip" && (
-              <EmptySurface
-                id="trip-surface"
-                eyebrow="Your Trip"
-                title="No Trip yet"
-                body="Create a Trip later when you are ready to select Destinations. Browsing remains commitment-free."
-              />
-            )}
-            {activeSurface === "itinerary" && (
-              <EmptySurface
-                id="itinerary-surface"
-                eyebrow="Your Itinerary"
-                title="Nothing scheduled yet"
-                body="A complete Itinerary will appear here after you create a Trip and explicitly build it."
-              />
-            )}
-          </div>
-        </section>
+          <TabsContent className="surface-content" value="discover">
+            <DiscoverSurface
+              destinations={destinations}
+              focusedDestination={focusedDestination}
+              onFocus={setFocusedId}
+            />
+          </TabsContent>
+          <TabsContent className="surface-content" value="trip">
+            <EmptySurface
+              eyebrow="Your Trip"
+              title="No Trip yet"
+              body="Create a Trip later when you are ready to select Destinations. Browsing remains commitment-free."
+            />
+          </TabsContent>
+          <TabsContent className="surface-content" value="itinerary">
+            <EmptySurface
+              eyebrow="Your Itinerary"
+              title="Nothing scheduled yet"
+              body="A complete Itinerary will appear here after you create a Trip and explicitly build it."
+            />
+          </TabsContent>
+        </Tabs>
       </div>
     </main>
   );
@@ -216,23 +236,27 @@ function DiscoverSurface({
   onFocus: (destinationId: string) => void;
 }) {
   return (
-    <div id="discover-surface" role="tabpanel" className="discover-surface">
+    <div className="discover-surface">
       <div>
         <p className="eyebrow">Owner-curated Destinations</p>
-        <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">
+        <h1 className="mt-2 text-3xl font-black tracking-tight text-foreground">
           Discover Batam
         </h1>
-        <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
+        <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
           Browse Published Destinations freely. Looking around will not create or
           change a Trip.
         </p>
       </div>
 
       {destinations.length === 0 ? (
-        <div className="empty-card">
-          <h2>No Published Destinations</h2>
-          <p>The curated collection is not available yet.</p>
-        </div>
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyTitle>No Published Destinations</EmptyTitle>
+            <EmptyDescription>
+              The curated collection is not available yet.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <>
           <div className="destination-heading">
@@ -265,38 +289,50 @@ function DiscoverSurface({
           </div>
 
           {focusedDestination && (
-            <article className="destination-detail">
-              <div className="detail-hero" aria-label="No Destination image available">
+            <Card>
+              <div
+                className="detail-hero"
+                aria-label="No Destination image available"
+              >
                 <span>Image coming soon</span>
               </div>
-              <p className="eyebrow">
-                {focusedDestination.primaryCategory} · {focusedDestination.area}
-              </p>
-              <h2>{focusedDestination.name}</h2>
-              <p>{focusedDestination.description}</p>
-              <dl className="facts-grid">
-                <div>
-                  <dt>Entry cost</dt>
-                  <dd>{focusedDestination.entryCostLabel}</dd>
-                </div>
-                <div>
-                  <dt>Typical visit</dt>
-                  <dd>{focusedDestination.typicalVisitMinutes} minutes</dd>
-                </div>
-                <div>
-                  <dt>Operating hours</dt>
-                  <dd>{focusedDestination.operatingHoursLabel}</dd>
-                </div>
-              </dl>
-              <a
-                className="maps-link"
-                href={focusedDestination.googleMapsUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Open in Google Maps <span aria-hidden="true">↗</span>
-              </a>
-            </article>
+              <CardHeader>
+                <Badge variant="outline">
+                  {focusedDestination.primaryCategory} · {focusedDestination.area}
+                </Badge>
+                <CardTitle>{focusedDestination.name}</CardTitle>
+                <CardDescription>
+                  {focusedDestination.description}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <dl className="facts-grid">
+                  <div>
+                    <dt>Entry cost</dt>
+                    <dd>{focusedDestination.entryCostLabel}</dd>
+                  </div>
+                  <div>
+                    <dt>Typical visit</dt>
+                    <dd>{focusedDestination.typicalVisitMinutes} minutes</dd>
+                  </div>
+                  <div>
+                    <dt>Operating hours</dt>
+                    <dd>{focusedDestination.operatingHoursLabel}</dd>
+                  </div>
+                </dl>
+              </CardContent>
+              <CardFooter>
+                <a
+                  className={buttonVariants({ className: "w-full" })}
+                  href={focusedDestination.googleMapsUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open in Google Maps
+                  <ArrowUpRightIcon data-icon="inline-end" />
+                </a>
+              </CardFooter>
+            </Card>
           )}
         </>
       )}
@@ -305,23 +341,25 @@ function DiscoverSurface({
 }
 
 function EmptySurface({
-  id,
   eyebrow,
   title,
   body,
 }: {
-  id: string;
   eyebrow: string;
   title: string;
   body: string;
 }) {
   return (
-    <div id={id} role="tabpanel" className="empty-surface">
-      <div>
-        <p className="eyebrow">{eyebrow}</p>
-        <h1>{title}</h1>
-        <p>{body}</p>
-      </div>
+    <div className="empty-surface">
+      <Empty className="border">
+        <EmptyHeader>
+          <Badge variant="outline">{eyebrow}</Badge>
+          <EmptyTitle>
+            <h1>{title}</h1>
+          </EmptyTitle>
+          <EmptyDescription>{body}</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     </div>
   );
 }

@@ -21,6 +21,13 @@ The application is available at <http://localhost:5173>. On first startup it
 creates `.data/batam-planner.sqlite`, applies the initial schema, and adds the
 first Published Destination when the database is empty.
 
+UI primitives are source-owned shadcn components using Base UI and the Nova
+preset. Add another component from the project root with:
+
+```bash
+npx shadcn@latest add <component>
+```
+
 Set `DATABASE_PATH` to use a different SQLite file:
 
 ```bash

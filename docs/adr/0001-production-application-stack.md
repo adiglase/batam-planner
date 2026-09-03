@@ -4,7 +4,7 @@ status: accepted
 
 # Use one full-stack React Router application with SQLite
 
-The first production walking skeleton uses Node.js LTS, TypeScript, React, React Router Framework Mode, and Tailwind CSS as one server-rendered deployable application. Published Destination reads cross a server boundary into SQLite through a repository interface; plain application contracts isolate map display and routing from their eventual Google adapters. This keeps initial operations and dependencies small while leaving the database and external providers replaceable.
+The first production walking skeleton uses Node.js LTS, TypeScript, React, React Router Framework Mode, and Tailwind CSS as one server-rendered deployable application. The UI system uses source-owned shadcn components with Base UI primitives, the Nova preset, a neutral base theme, Geist, and Lucide icons. This gives the application consistent accessible primitives without coupling its visual design to a packaged component library. Published Destination reads cross a server boundary into SQLite through a repository interface; plain application contracts isolate map display and routing from their eventual Google adapters. This keeps initial operations and dependencies small while leaving the database and external providers replaceable.
 
 Browser-local Trip persistence will use a versioned JSON envelope in `localStorage` behind a `TripRepository`; its small bounded data set does not yet justify IndexedDB or another dependency. Private owner access will use one configured OIDC identity, allowlisted by stable subject, without introducing Visitor accounts or multi-user roles.
 

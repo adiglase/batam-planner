@@ -1,5 +1,7 @@
 import type { Coordinates } from "~/geography/coordinates";
 
+export type OperationalStatus = "Open" | "Temporarily closed";
+
 export type Destination = {
   id: string;
   slug: string;
@@ -8,7 +10,7 @@ export type Destination = {
   area: string;
   description: string;
   coordinates: Coordinates;
-  operationalStatus: "Open" | "Temporarily closed";
+  operationalStatus: OperationalStatus;
   typicalVisitMinutes: number;
   operatingHoursLabel: string;
   entryCostLabel: string;

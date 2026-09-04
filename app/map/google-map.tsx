@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { BATAM_MAP_CENTER } from "~/geography/coordinates";
 import type { MapPresentation } from "./map-provider";
 
 type GoogleMapInstance = {
@@ -40,15 +41,20 @@ function loadGoogleMaps(apiKey: string) {
 
   googleMapsPromise = new Promise((resolve, reject) => {
     const script = document.createElement("script");
+    const fail = (message: string) => {
+      script.remove();
+      googleMapsPromise = undefined;
+      reject(new Error(message));
+    };
     const source = new URL("https://maps.googleapis.com/maps/api/js");
     source.searchParams.set("key", apiKey);
     source.searchParams.set("v", "weekly");
     script.src = source.toString();
     script.async = true;
-    script.onerror = () => reject(new Error("Google Maps failed to load"));
+    script.onerror = () => fail("Google Maps failed to load");
     script.onload = () => {
       if (window.google?.maps) resolve(window.google.maps);
-      else reject(new Error("Google Maps loaded without its browser API"));
+      else fail("Google Maps loaded without its browser API");
     };
     document.head.append(script);
   });
@@ -78,7 +84,10 @@ export function GoogleMap({
         if (!active || !containerRef.current) return;
 
         const map = new maps.Map(containerRef.current, {
-          center: { lat: 1.0456, lng: 104.0305 },
+          center: {
+            lat: BATAM_MAP_CENTER.latitude,
+            lng: BATAM_MAP_CENTER.longitude,
+          },
           zoom: 10,
           mapTypeControl: false,
           streetViewControl: false,
@@ -140,7 +149,7 @@ export function GoogleMap({
 
   return (
     <div className="google-map-shell">
-      <div ref={containerRef} className="google-map" aria-label="Google map of Batam" />
+      <div ref={containerRef} className="google-map" />
       <div className="map-caption" aria-live="polite">
         <strong>
           {focusedMarker?.label ?? "Explore Batam"}

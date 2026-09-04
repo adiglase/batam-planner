@@ -19,7 +19,7 @@ npm run dev
 
 The application is available at <http://localhost:5173>. On first startup it
 creates `.data/batam-planner.sqlite`, applies the initial schema, and adds the
-first Published Destination when the database is empty.
+first Published Destination when that seed record is absent.
 
 UI primitives are source-owned shadcn components using Base UI and the Nova
 preset. Add another component from the project root with:
@@ -50,8 +50,8 @@ npm run build
 ```
 
 Browser-level automation is deliberately deferred for the initial walking
-skeleton. The responsive Visitor path should be checked manually at 360px and
-1280px widths.
+skeleton. This slice was checked manually at 390 × 844 and 1440 × 900. The full
+MVP responsive targets remain 360px phone and 1280px desktop widths.
 
 ## Production
 

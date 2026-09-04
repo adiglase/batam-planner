@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
-import type { Destination } from "./destination";
+import type { Destination, OperationalStatus } from "./destination";
 import type { DestinationRepository } from "./destination-repository.server";
 
 type DestinationRow = {
@@ -14,7 +14,7 @@ type DestinationRow = {
   description: string;
   latitude: number;
   longitude: number;
-  operational_status: "Open" | "Temporarily closed";
+  operational_status: OperationalStatus;
   typical_visit_minutes: number;
   operating_hours_label: string;
   entry_cost_label: string;

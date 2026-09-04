@@ -275,7 +275,7 @@ function DiscoverSurface({
           <div className="collection-heading">
             <div>
               <h2 id="destinations-title">Published Destinations</h2>
-              <p>Curated places, ordered A–Z</p>
+              <p>Curated Destinations, ordered A–Z</p>
             </div>
             <Badge variant="outline">{destinations.length}</Badge>
           </div>

@@ -53,7 +53,7 @@ export type DestinationCandidate = {
   imageRightsSource: string;
 };
 
-export type DestinationDraft = {
+export type DraftDestination = {
   id: string;
   destinationId: string;
   candidate: DestinationCandidate;

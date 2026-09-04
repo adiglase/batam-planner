@@ -416,19 +416,9 @@ a {
   font-size: 0.75rem;
 }
 
-.destination-image-placeholder svg,
-.destination-warning svg {
+.destination-image-placeholder svg {
   width: 1rem;
   height: 1rem;
-}
-
-.destination-warning {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  color: var(--foreground);
-  font-size: 0.78rem;
-  font-weight: 600;
 }
 
 .owner-shell {

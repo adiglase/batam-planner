@@ -12,6 +12,14 @@ _Avoid_: User, traveller, customer
 A curated Batam place that a Visitor may select for a Trip.
 _Avoid_: Place, attraction, stop
 
+**Draft Destination**:
+A private candidate version of a Destination that the product owner may edit and preview. It is never available to a Visitor.
+_Avoid_: Draft (ambiguous with a Draft Trip), unpublished place
+
+**Published Destination**:
+The current validated version of a Destination available to Visitors. Editing a replacement Draft Destination does not change it until the replacement is explicitly Published.
+_Avoid_: Live place, public draft
+
 **Trip**:
 The Visitor's saved selection of Destinations, planning constraints, and current Itinerary, if one has been built.
 _Avoid_: Plan, journey

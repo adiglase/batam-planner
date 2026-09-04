@@ -4,18 +4,21 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 
 import {
-  DESTINATION_CATEGORIES,
   type Destination,
   type DestinationCandidate,
   type DestinationCategory,
-  type DestinationDraft,
+  type DraftDestination,
   type DestinationPreview,
   type OperationalStatus,
 } from "./destination";
+import {
+  categoryUsesVisitFacts,
+  destinationPreviewFromDraft,
+  validateDestinationCandidate,
+} from "./destination-publishing";
 import type {
   DestinationRepository,
   OwnerDestination,
-  PublishErrors,
   PublishResult,
 } from "./destination-repository.server";
 
@@ -76,103 +79,6 @@ const EMPTY_CANDIDATE: DestinationCandidate = {
   imageRightsSource: "",
 };
 
-function isGoogleMapsUrl(value: string) {
-  try {
-    const url = new URL(value);
-    return (
-      url.protocol === "https:" &&
-      (url.hostname === "google.com" ||
-        url.hostname.endsWith(".google.com") ||
-        url.hostname === "maps.app.goo.gl")
-    );
-  } catch {
-    return false;
-  }
-}
-
-function isHttpsUrl(value: string) {
-  try {
-    return new URL(value).protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-export function validateDestinationCandidate(
-  candidate: DestinationCandidate,
-): PublishErrors {
-  const errors: PublishErrors = {};
-  const accommodation = candidate.primaryCategory === "Accommodation";
-
-  if (!candidate.name.trim()) errors.name = "Enter an English name.";
-  if (
-    !DESTINATION_CATEGORIES.includes(
-      candidate.primaryCategory as DestinationCategory,
-    )
-  ) {
-    errors.primaryCategory = "Choose a primary category.";
-  }
-  if (!candidate.description.trim()) {
-    errors.description = "Enter a concise English description.";
-  }
-  if (
-    candidate.latitude === null ||
-    !Number.isFinite(candidate.latitude) ||
-    candidate.latitude < -90 ||
-    candidate.latitude > 90
-  ) {
-    errors.latitude = "Enter a latitude from -90 to 90.";
-  }
-  if (
-    candidate.longitude === null ||
-    !Number.isFinite(candidate.longitude) ||
-    candidate.longitude < -180 ||
-    candidate.longitude > 180
-  ) {
-    errors.longitude = "Enter a longitude from -180 to 180.";
-  }
-  if (!candidate.operationalStatus) {
-    errors.operationalStatus = "Choose an operational status.";
-  }
-  if (!accommodation) {
-    if (
-      candidate.typicalVisitMinutes === null ||
-      !Number.isInteger(candidate.typicalVisitMinutes) ||
-      candidate.typicalVisitMinutes <= 0
-    ) {
-      errors.typicalVisitMinutes = "Enter a positive whole number of minutes.";
-    }
-    if (!candidate.operatingHoursLabel.trim()) {
-      errors.operatingHoursLabel =
-        "Enter hours or explicitly state that hours are unknown.";
-    }
-    if (!candidate.entryCostLabel.trim()) {
-      errors.entryCostLabel =
-        "Enter a cost or explicitly state that cost is unknown.";
-    }
-  }
-  if (!isGoogleMapsUrl(candidate.googleMapsUrl)) {
-    errors.googleMapsUrl = "Enter a valid HTTPS Google Maps link.";
-  }
-
-  const hasAnyImageFact = Boolean(
-    candidate.imageUrl.trim() ||
-      candidate.imageAltText.trim() ||
-      candidate.imageRightsSource.trim(),
-  );
-  if (hasAnyImageFact && !isHttpsUrl(candidate.imageUrl)) {
-    errors.imageUrl = "Enter a valid HTTPS image URL.";
-  }
-  if (candidate.imageUrl.trim() && !candidate.imageAltText.trim()) {
-    errors.imageAltText = "Enter English alt text for this image.";
-  }
-  if (candidate.imageUrl.trim() && !candidate.imageRightsSource.trim()) {
-    errors.imageRightsSource = "Record the private image rights and source.";
-  }
-
-  return errors;
-}
-
 function candidateFromRow(row: DraftRow): DestinationCandidate {
   return {
     name: row.name,
@@ -193,7 +99,7 @@ function candidateFromRow(row: DraftRow): DestinationCandidate {
 }
 
 function destinationFromRow(row: DestinationRow): Destination {
-  const accommodation = row.primary_category === "Accommodation";
+  const usesVisitFacts = categoryUsesVisitFacts(row.primary_category);
 
   return {
     id: row.id,
@@ -204,7 +110,7 @@ function destinationFromRow(row: DestinationRow): Destination {
     description: row.description,
     coordinates: { latitude: row.latitude, longitude: row.longitude },
     operationalStatus: row.operational_status,
-    ...(!accommodation && {
+    ...(usesVisitFacts && {
       typicalVisitMinutes: row.typical_visit_minutes,
       operatingHoursLabel: row.operating_hours_label,
       entryCostLabel: row.entry_cost_label,
@@ -219,59 +125,13 @@ function destinationFromRow(row: DestinationRow): Destination {
 function draftFromRow(
   row: DraftRow,
   replacesPublished: boolean,
-): DestinationDraft {
+): DraftDestination {
   return {
     id: row.id,
     destinationId: row.destination_id,
     candidate: candidateFromRow(row),
     replacesPublished,
     updatedAt: row.updated_at,
-  };
-}
-
-function previewFromDraft(draft: DestinationDraft): DestinationPreview {
-  const candidate = draft.candidate;
-  return {
-    id: draft.destinationId,
-    name: candidate.name,
-    ...(candidate.primaryCategory
-      ? { primaryCategory: candidate.primaryCategory }
-      : {}),
-    ...(candidate.area.trim() ? { area: candidate.area } : {}),
-    ...(candidate.description.trim()
-      ? { description: candidate.description }
-      : {}),
-    ...(candidate.latitude !== null && candidate.longitude !== null
-      ? {
-          coordinates: {
-            latitude: candidate.latitude,
-            longitude: candidate.longitude,
-          },
-        }
-      : {}),
-    ...(candidate.operationalStatus
-      ? { operationalStatus: candidate.operationalStatus }
-      : {}),
-    ...(candidate.typicalVisitMinutes
-      ? { typicalVisitMinutes: candidate.typicalVisitMinutes }
-      : {}),
-    ...(candidate.operatingHoursLabel.trim()
-      ? { operatingHoursLabel: candidate.operatingHoursLabel }
-      : {}),
-    ...(candidate.entryCostLabel.trim()
-      ? { entryCostLabel: candidate.entryCostLabel }
-      : {}),
-    ...(candidate.googleMapsUrl.trim()
-      ? { googleMapsUrl: candidate.googleMapsUrl }
-      : {}),
-    ...(candidate.imageUrl.trim() && candidate.imageAltText.trim()
-      ? {
-          image: {
-            url: candidate.imageUrl,
-            altText: candidate.imageAltText,
-          },
-        }
-      : {}),
   };
 }
 
@@ -341,7 +201,7 @@ export class SqliteDestinationRepository implements DestinationRepository {
     });
   }
 
-  createDraft(): DestinationDraft {
+  createDraft(): DraftDestination {
     const now = new Date().toISOString();
     const id = randomUUID();
     const destinationId = randomUUID();
@@ -349,7 +209,7 @@ export class SqliteDestinationRepository implements DestinationRepository {
     return this.getDraft(id)!;
   }
 
-  getDraft(id: string): DestinationDraft | undefined {
+  getDraft(id: string): DraftDestination | undefined {
     const row = this.database
       .prepare("SELECT * FROM destination_drafts WHERE id = ?")
       .get(id) as DraftRow | undefined;
@@ -360,7 +220,7 @@ export class SqliteDestinationRepository implements DestinationRepository {
     return draftFromRow(row, Boolean(published));
   }
 
-  saveDraft(id: string, candidate: DestinationCandidate): DestinationDraft {
+  saveDraft(id: string, candidate: DestinationCandidate): DraftDestination {
     const result = this.database
       .prepare(
         `UPDATE destination_drafts SET
@@ -389,10 +249,10 @@ export class SqliteDestinationRepository implements DestinationRepository {
   previewDraft(id: string): DestinationPreview {
     const draft = this.getDraft(id);
     if (!draft) throw new Error("Destination Draft not found");
-    return previewFromDraft(draft);
+    return destinationPreviewFromDraft(draft);
   }
 
-  startReplacementDraft(destinationId: string): DestinationDraft {
+  startReplacementDraft(destinationId: string): DraftDestination {
     const existing = this.database
       .prepare("SELECT * FROM destination_drafts WHERE destination_id = ?")
       .get(destinationId) as DraftRow | undefined;
@@ -415,10 +275,9 @@ export class SqliteDestinationRepository implements DestinationRepository {
         latitude: published.latitude,
         longitude: published.longitude,
         operationalStatus: published.operational_status,
-        typicalVisitMinutes:
-          published.primary_category === "Accommodation"
-            ? null
-            : published.typical_visit_minutes,
+        typicalVisitMinutes: categoryUsesVisitFacts(published.primary_category)
+          ? published.typical_visit_minutes
+          : null,
         operatingHoursLabel: published.operating_hours_label,
         entryCostLabel: published.entry_cost_label,
         googleMapsUrl: published.google_maps_url,

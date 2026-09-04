@@ -1,7 +1,7 @@
 import type {
   Destination,
   DestinationCandidate,
-  DestinationDraft,
+  DraftDestination,
   DestinationPreview,
 } from "./destination";
 
@@ -14,16 +14,16 @@ export type PublishResult =
 export type OwnerDestination = {
   destinationId: string;
   published?: Destination;
-  draft?: DestinationDraft;
+  draft?: DraftDestination;
 };
 
 export interface DestinationRepository {
   listPublished(): Destination[];
   listForOwner(): OwnerDestination[];
-  createDraft(): DestinationDraft;
-  getDraft(id: string): DestinationDraft | undefined;
-  saveDraft(id: string, candidate: DestinationCandidate): DestinationDraft;
+  createDraft(): DraftDestination;
+  getDraft(id: string): DraftDestination | undefined;
+  saveDraft(id: string, candidate: DestinationCandidate): DraftDestination;
   previewDraft(id: string): DestinationPreview;
-  startReplacementDraft(destinationId: string): DestinationDraft;
+  startReplacementDraft(destinationId: string): DraftDestination;
   publishDraft(id: string): PublishResult;
 }

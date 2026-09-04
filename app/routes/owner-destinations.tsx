@@ -16,6 +16,7 @@ import {
 } from "~/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "~/components/ui/empty";
 import { Input } from "~/components/ui/input";
+import { Field, FieldGroup } from "~/components/ui/field";
 import { getDestinationRepository } from "~/destinations/sqlite-destination-repository.server";
 
 export function meta() {
@@ -75,29 +76,33 @@ export default function OwnerDestinations({ loaderData }: Route.ComponentProps) 
           <div>
             <p className="owner-eyebrow">Destination publishing</p>
             <h1>Curate Batam with confidence.</h1>
-            <p>Draft privately, preview the Visitor presentation, then Publish only when the content contract is complete.</p>
+            <p>Work on a private Draft Destination, preview the Visitor presentation, then Publish only when the content contract is complete.</p>
           </div>
           <Form method="post">
             <Button name="intent" value="create">
               <PlusIcon data-icon="inline-start" />
-              Create Draft
+              Create Draft Destination
             </Button>
           </Form>
         </header>
 
         <Form method="get" className="owner-search" role="search">
-          <Input name="q" defaultValue={query} placeholder="Filter Destinations by name" aria-label="Filter Destinations by name" />
-          <Button type="submit" variant="outline">
-            <SearchIcon data-icon="inline-start" />
-            Filter
-          </Button>
+          <FieldGroup>
+            <Field orientation="horizontal">
+              <Input name="q" defaultValue={query} placeholder="Filter Destinations by name" aria-label="Filter Destinations by name" />
+              <Button type="submit" variant="outline">
+                <SearchIcon data-icon="inline-start" />
+                Filter
+              </Button>
+            </Field>
+          </FieldGroup>
         </Form>
 
         {destinations.length === 0 ? (
           <Empty className="border">
             <EmptyHeader>
               <EmptyTitle>No Destinations found</EmptyTitle>
-              <EmptyDescription>Create a private Draft or change the current filter.</EmptyDescription>
+              <EmptyDescription>Create a Draft Destination or change the current filter.</EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (
@@ -110,9 +115,9 @@ export default function OwnerDestinations({ loaderData }: Route.ComponentProps) 
                     <CardTitle>{name}</CardTitle>
                     <CardDescription>
                       {item.draft?.replacesPublished
-                        ? "Published · replacement Draft in progress"
+                        ? "Published · replacement Draft Destination in progress"
                         : item.draft
-                          ? "Private Draft"
+                          ? "Private Draft Destination"
                           : "Published"}
                     </CardDescription>
                     <CardAction>
@@ -130,7 +135,7 @@ export default function OwnerDestinations({ loaderData }: Route.ComponentProps) 
                     {item.draft ? (
                       <Link className={buttonVariants({ variant: "outline", className: "w-full" })} to={`/owner/destinations/${item.draft.id}`}>
                         <FilePenLineIcon data-icon="inline-start" />
-                        Edit Draft
+                        Edit Draft Destination
                       </Link>
                     ) : (
                       <Form method="post" className="w-full">

@@ -72,11 +72,11 @@ describe("Destination publishing", () => {
       description: "",
       latitude: 91,
       longitude: null,
-      operationalStatus: "",
+      operationalStatus: "Closed" as never,
       typicalVisitMinutes: 0,
-      operatingHoursLabel: "",
-      entryCostLabel: "",
-      googleMapsUrl: "https://example.com/not-google-maps",
+      operatingHoursLabel: "Whenever the owner is around",
+      entryCostLabel: "Cheap",
+      googleMapsUrl: "https://docs.google.com/document/d/not-maps",
       imageAltText: "",
       imageRightsSource: "",
     });
@@ -157,5 +157,22 @@ describe("Destination publishing", () => {
     );
     expect(preview).not.toHaveProperty("image");
     expect(preview).not.toHaveProperty("imageRightsSource");
+  });
+
+  it("uses the Published omission rules when previewing Accommodation", () => {
+    const draft = repository.createDraft();
+    repository.saveDraft(draft.id, {
+      ...publishableCandidate,
+      primaryCategory: "Accommodation",
+      typicalVisitMinutes: 90,
+      operatingHoursLabel: "Open daily, 06:00–18:00",
+      entryCostLabel: "IDR 500,000",
+    });
+
+    const preview = repository.previewDraft(draft.id);
+
+    expect(preview).not.toHaveProperty("typicalVisitMinutes");
+    expect(preview).not.toHaveProperty("operatingHoursLabel");
+    expect(preview).not.toHaveProperty("entryCostLabel");
   });
 });

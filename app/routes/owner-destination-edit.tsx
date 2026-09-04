@@ -87,12 +87,12 @@ export default function OwnerDestinationEdit({ loaderData, actionData }: Route.C
           <ArrowLeftIcon data-icon="inline-start" />
           All Destinations
         </Link>
-        <Badge variant="secondary">Private Draft</Badge>
+        <Badge variant="secondary">Private Draft Destination</Badge>
       </header>
       <div className="owner-page owner-editor-page">
         <header className="owner-heading">
           <div>
-            <p className="owner-eyebrow">{draft.replacesPublished ? "Replacement Draft" : "New Destination"}</p>
+            <p className="owner-eyebrow">{draft.replacesPublished ? "Replacement Draft Destination" : "New Destination"}</p>
             <h1>{candidate.name || "Untitled Destination"}</h1>
             <p>{draft.replacesPublished ? "The current Published version stays live until this replacement passes validation and is Published." : "This Destination remains private until it passes validation and is Published."}</p>
           </div>
@@ -100,13 +100,13 @@ export default function OwnerDestinationEdit({ loaderData, actionData }: Route.C
 
         {Object.keys(errors).length > 0 && (
           <Alert variant="destructive">
-            <AlertTitle>This Draft cannot Publish yet</AlertTitle>
+            <AlertTitle>This Draft Destination cannot Publish yet</AlertTitle>
             <AlertDescription>Correct the fields identified below, then Publish again.</AlertDescription>
           </Alert>
         )}
         {actionData?.saved && Object.keys(errors).length === 0 && (
           <Alert>
-            <AlertTitle>Draft saved</AlertTitle>
+            <AlertTitle>Draft Destination saved</AlertTitle>
             <AlertDescription>Your changes remain private.</AlertDescription>
           </Alert>
         )}
@@ -231,8 +231,8 @@ export default function OwnerDestinationEdit({ loaderData, actionData }: Route.C
           </Card>
 
           <div className="owner-editor-actions">
-            <Button type="submit" variant="outline" name="intent" value="save"><SaveIcon data-icon="inline-start" />Save Draft</Button>
-            <Button type="submit" variant="outline" name="intent" value="preview"><EyeIcon data-icon="inline-start" />Save & Preview</Button>
+            <Button type="submit" variant="outline" name="intent" value="save"><SaveIcon data-icon="inline-start" />Save Draft Destination</Button>
+            <Button type="submit" variant="outline" name="intent" value="preview"><EyeIcon data-icon="inline-start" />Save and preview</Button>
             <Button type="submit" name="intent" value="publish"><SendIcon data-icon="inline-start" />Publish</Button>
           </div>
         </Form>

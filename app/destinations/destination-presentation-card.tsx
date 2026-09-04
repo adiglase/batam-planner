@@ -80,10 +80,10 @@ export function DestinationPresentationCard({
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {destination.operationalStatus === "Temporarily closed" && (
-          <div className="destination-warning">
-            <TriangleAlertIcon aria-hidden="true" />
-            <span>Temporarily closed</span>
-          </div>
+          <Badge variant="secondary">
+            <TriangleAlertIcon data-icon="inline-start" />
+            Temporarily closed
+          </Badge>
         )}
         {destination.description && (
           <p className="destination-description">{destination.description}</p>

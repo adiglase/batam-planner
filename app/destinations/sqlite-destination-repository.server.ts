@@ -242,13 +242,13 @@ export class SqliteDestinationRepository implements DestinationRepository {
         WHERE id = @id`,
       )
       .run({ ...candidate, id, updatedAt: new Date().toISOString() });
-    if (result.changes === 0) throw new Error("Destination Draft not found");
+    if (result.changes === 0) throw new Error("Draft Destination not found");
     return this.getDraft(id)!;
   }
 
   previewDraft(id: string): DestinationPreview {
     const draft = this.getDraft(id);
-    if (!draft) throw new Error("Destination Draft not found");
+    if (!draft) throw new Error("Draft Destination not found");
     return destinationPreviewFromDraft(draft);
   }
 
@@ -292,7 +292,7 @@ export class SqliteDestinationRepository implements DestinationRepository {
 
   publishDraft(id: string): PublishResult {
     const draft = this.getDraft(id);
-    if (!draft) throw new Error("Destination Draft not found");
+    if (!draft) throw new Error("Draft Destination not found");
     const errors = validateDestinationCandidate(draft.candidate);
     if (Object.keys(errors).length > 0) return { ok: false, errors };
 

@@ -14,7 +14,7 @@ const OPERATIONAL_STATUSES: OperationalStatus[] = [
 ];
 const EXPLICIT_HOURS_STATES = ["Hours unknown", "No meaningful restriction"];
 const HOURS_PERIOD = /(?:[01]\d|2[0-3]):[0-5]\d\s*[–-]\s*(?:[01]\d|2[0-3]):[0-5]\d/;
-const IDR_AMOUNT = "(?:0|[1-9]\\d{0,2}(?:,\\d{3})*)";
+const IDR_AMOUNT = "(?:0|[1-9]\\d*|[1-9]\\d{0,2}(?:,\\d{3})+)";
 const ENTRY_COST = new RegExp(
   `^(?:Free|Cost unknown|IDR ${IDR_AMOUNT}(?:\\s*[–-]\\s*(?:IDR )?${IDR_AMOUNT})?)(?: .+)?$`,
 );

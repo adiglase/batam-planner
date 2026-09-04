@@ -115,10 +115,10 @@ export default function OwnerDestinations({ loaderData }: Route.ComponentProps) 
                     <CardTitle>{name}</CardTitle>
                     <CardDescription>
                       {item.draft?.replacesPublished
-                        ? "Published · replacement Draft Destination in progress"
+                        ? "Published Destination · replacement Draft Destination in progress"
                         : item.draft
                           ? "Private Draft Destination"
-                          : "Published"}
+                          : "Published Destination"}
                     </CardDescription>
                     <CardAction>
                       <Badge variant={item.draft ? "secondary" : "outline"}>

@@ -64,7 +64,7 @@ export type DraftDestination = {
 export type DestinationPreview = {
   id: string;
   name: string;
-  primaryCategory?: string;
+  primaryCategory?: DestinationCategory;
   area?: string;
   description?: string;
   coordinates?: Coordinates;

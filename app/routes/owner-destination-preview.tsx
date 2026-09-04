@@ -16,7 +16,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   await requireOwner(request);
   const repository = getDestinationRepository();
   const draft = repository.getDraft(params.draftId);
-  if (!draft) throw new Response("Destination Draft not found", { status: 404 });
+  if (!draft) throw new Response("Draft Destination not found", { status: 404 });
   return { draft, preview: repository.previewDraft(params.draftId) };
 }
 

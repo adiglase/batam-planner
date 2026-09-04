@@ -42,7 +42,7 @@ describe("Destination publishing", () => {
     rmSync(directory, { recursive: true, force: true });
   });
 
-  it("keeps a Draft private until its complete candidate is Published", () => {
+  it("keeps a Draft Destination private until it becomes a Published Destination", () => {
     const draft = repository.createDraft();
 
     repository.saveDraft(draft.id, publishableCandidate);
@@ -103,7 +103,7 @@ describe("Destination publishing", () => {
     expect(repository.listPublished()).toEqual([]);
   });
 
-  it("keeps the current Published version live until a replacement is valid", () => {
+  it("keeps the current Published Destination live until a replacement is valid", () => {
     const originalDraft = repository.createDraft();
     repository.saveDraft(originalDraft.id, publishableCandidate);
     repository.publishDraft(originalDraft.id);
@@ -174,5 +174,18 @@ describe("Destination publishing", () => {
     expect(preview).not.toHaveProperty("typicalVisitMinutes");
     expect(preview).not.toHaveProperty("operatingHoursLabel");
     expect(preview).not.toHaveProperty("entryCostLabel");
+  });
+
+  it("publishes ungrouped fixed IDR ranges", () => {
+    const draft = repository.createDraft();
+    repository.saveDraft(draft.id, {
+      ...publishableCandidate,
+      entryCostLabel: "IDR 50000–100000",
+    });
+
+    expect(repository.publishDraft(draft.id)).toEqual({
+      ok: true,
+      destinationId: draft.destinationId,
+    });
   });
 });

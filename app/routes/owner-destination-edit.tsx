@@ -15,12 +15,12 @@ import { DESTINATION_CATEGORIES, type DestinationCandidate, type DestinationCate
 import type { PublishErrors } from "~/destinations/destination-repository.server";
 import { getDestinationRepository } from "~/destinations/sqlite-destination-repository.server";
 
-function text(formData: FormData, name: string) {
+function trimmedFormValue(formData: FormData, name: string) {
   return String(formData.get(name) ?? "").trim();
 }
 
 function numberOrNull(formData: FormData, name: string) {
-  const value = text(formData, name);
+  const value = trimmedFormValue(formData, name);
   if (!value) return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
@@ -28,20 +28,20 @@ function numberOrNull(formData: FormData, name: string) {
 
 function candidateFromForm(formData: FormData): DestinationCandidate {
   return {
-    name: text(formData, "name"),
-    primaryCategory: text(formData, "primaryCategory") as DestinationCategory | "",
-    area: text(formData, "area"),
-    description: text(formData, "description"),
+    name: trimmedFormValue(formData, "name"),
+    primaryCategory: trimmedFormValue(formData, "primaryCategory") as DestinationCategory | "",
+    area: trimmedFormValue(formData, "area"),
+    description: trimmedFormValue(formData, "description"),
     latitude: numberOrNull(formData, "latitude"),
     longitude: numberOrNull(formData, "longitude"),
-    operationalStatus: text(formData, "operationalStatus") as OperationalStatus | "",
+    operationalStatus: trimmedFormValue(formData, "operationalStatus") as OperationalStatus | "",
     typicalVisitMinutes: numberOrNull(formData, "typicalVisitMinutes"),
-    operatingHoursLabel: text(formData, "operatingHoursLabel"),
-    entryCostLabel: text(formData, "entryCostLabel"),
-    googleMapsUrl: text(formData, "googleMapsUrl"),
-    imageUrl: text(formData, "imageUrl"),
-    imageAltText: text(formData, "imageAltText"),
-    imageRightsSource: text(formData, "imageRightsSource"),
+    operatingHoursLabel: trimmedFormValue(formData, "operatingHoursLabel"),
+    entryCostLabel: trimmedFormValue(formData, "entryCostLabel"),
+    googleMapsUrl: trimmedFormValue(formData, "googleMapsUrl"),
+    imageUrl: trimmedFormValue(formData, "imageUrl"),
+    imageAltText: trimmedFormValue(formData, "imageAltText"),
+    imageRightsSource: trimmedFormValue(formData, "imageRightsSource"),
   };
 }
 
@@ -52,7 +52,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
 export async function loader({ request, params }: Route.LoaderArgs) {
   await requireOwner(request);
   const draft = getDestinationRepository().getDraft(params.draftId);
-  if (!draft) throw new Response("Destination Draft not found", { status: 404 });
+  if (!draft) throw new Response("Draft Destination not found", { status: 404 });
   return { draft };
 }
 
@@ -94,7 +94,7 @@ export default function OwnerDestinationEdit({ loaderData, actionData }: Route.C
           <div>
             <p className="owner-eyebrow">{draft.replacesPublished ? "Replacement Draft Destination" : "New Destination"}</p>
             <h1>{candidate.name || "Untitled Destination"}</h1>
-            <p>{draft.replacesPublished ? "The current Published version stays live until this replacement passes validation and is Published." : "This Destination remains private until it passes validation and is Published."}</p>
+            <p>{draft.replacesPublished ? "The current Published Destination stays live until this replacement passes validation and is Published." : "This Destination remains private until it passes validation and becomes a Published Destination."}</p>
           </div>
         </header>
 

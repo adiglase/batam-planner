@@ -342,7 +342,7 @@ function DiscoverSurface({
                     <CardFooter>
                       <a
                         className={buttonVariants({
-                          variant: "outline",
+                          variant: "default",
                           className: "w-full",
                         })}
                         href={destination.googleMapsUrl}

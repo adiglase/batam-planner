@@ -42,9 +42,27 @@ map fallback:
 VITE_GOOGLE_MAPS_API_KEY=your-browser-key npm run dev
 ```
 
+The private Destination publishing workflow is available at
+`/owner/destinations`. Configure one OpenID Connect client and allowlist the
+owner's stable subject identifier:
+
+```bash
+OWNER_OIDC_ISSUER=https://identity.example.com \
+OWNER_OIDC_CLIENT_ID=batam-planner \
+OWNER_OIDC_CLIENT_SECRET=replace-with-the-client-secret \
+OWNER_OIDC_REDIRECT_URI=http://localhost:5173/owner/callback \
+OWNER_OIDC_SUBJECT=the-owner-stable-subject \
+OWNER_SESSION_SECRET=replace-with-at-least-32-random-characters \
+npm run dev
+```
+
+Register the exact redirect URI with the identity provider. Visitors continue
+to use the public planner without an account or session.
+
 ## Verification
 
 ```bash
+npm test
 npm run typecheck
 npm run build
 ```

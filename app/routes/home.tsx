@@ -1,27 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import {
-  ArrowUpRightIcon,
   CalendarDaysIcon,
-  Clock3Icon,
   CompassIcon,
   LuggageIcon,
-  MapPinIcon,
-  TicketIcon,
 } from "lucide-react";
 import { Link } from "react-router";
 
 import { Badge } from "~/components/ui/badge";
-import { Button, buttonVariants } from "~/components/ui/button";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "~/components/ui/card";
 import {
   Empty,
   EmptyDescription,
@@ -29,7 +15,6 @@ import {
   EmptyTitle,
 } from "~/components/ui/empty";
 import { ScrollArea } from "~/components/ui/scroll-area";
-import { Separator } from "~/components/ui/separator";
 import {
   Tabs,
   TabsContent,
@@ -38,6 +23,7 @@ import {
 } from "~/components/ui/tabs";
 import type { Route } from "./+types/home";
 import type { Destination } from "~/destinations/destination";
+import { DestinationPresentationCard } from "~/destinations/destination-presentation-card";
 import { getDestinationRepository } from "~/destinations/sqlite-destination-repository.server";
 import { ConfiguredMap } from "~/map/configured-map";
 
@@ -295,65 +281,12 @@ function DiscoverSurface({
                 const isFocused = destination.id === focusedDestination?.id;
 
                 return (
-                  <Card key={destination.id}>
-                    <CardHeader>
-                      <CardTitle>{destination.name}</CardTitle>
-                      <CardDescription>
-                        {destination.primaryCategory} · {destination.area}
-                      </CardDescription>
-                      <CardAction>
-                        {isFocused ? (
-                          <Badge variant="secondary">On map</Badge>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            aria-label={`Show ${destination.name} on map`}
-                            onClick={() => onFocus(destination.id)}
-                          >
-                            <MapPinIcon data-icon="inline-start" />
-                          </Button>
-                        )}
-                      </CardAction>
-                    </CardHeader>
-                    <CardContent className="flex flex-col gap-4">
-                      <p className="destination-description">
-                        {destination.description}
-                      </p>
-                      <Separator />
-                      <dl className="destination-facts">
-                        <div>
-                          <TicketIcon aria-hidden="true" />
-                          <dt>Entry</dt>
-                          <dd>{destination.entryCostLabel}</dd>
-                        </div>
-                        <div>
-                          <Clock3Icon aria-hidden="true" />
-                          <dt>Visit</dt>
-                          <dd>{destination.typicalVisitMinutes} min</dd>
-                        </div>
-                        <div>
-                          <CalendarDaysIcon aria-hidden="true" />
-                          <dt>Hours</dt>
-                          <dd>{destination.operatingHoursLabel}</dd>
-                        </div>
-                      </dl>
-                    </CardContent>
-                    <CardFooter>
-                      <a
-                        className={buttonVariants({
-                          variant: "default",
-                          className: "w-full",
-                        })}
-                        href={destination.googleMapsUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        View in Google Maps
-                        <ArrowUpRightIcon data-icon="inline-end" />
-                      </a>
-                    </CardFooter>
-                  </Card>
+                  <DestinationPresentationCard
+                    key={destination.id}
+                    destination={destination}
+                    isFocused={isFocused}
+                    onFocus={onFocus}
+                  />
                 );
               })}
             </div>

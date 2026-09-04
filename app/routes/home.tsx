@@ -2,15 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import {
   ArrowUpRightIcon,
-  ChevronRightIcon,
+  CalendarDaysIcon,
+  Clock3Icon,
+  CompassIcon,
+  LuggageIcon,
   MapPinIcon,
+  TicketIcon,
 } from "lucide-react";
 import { Link } from "react-router";
 
 import { Badge } from "~/components/ui/badge";
-import { buttonVariants } from "~/components/ui/button";
+import { Button, buttonVariants } from "~/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardFooter,
@@ -23,6 +28,8 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from "~/components/ui/empty";
+import { ScrollArea } from "~/components/ui/scroll-area";
+import { Separator } from "~/components/ui/separator";
 import {
   Tabs,
   TabsContent,
@@ -125,8 +132,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           </span>
           <span>Batam Planner</span>
         </Link>
-        <Badge className="ml-auto" variant="secondary">
-          No account
+        <Badge className="ml-auto" variant="outline">
+          No sign-in required
         </Badge>
       </header>
 
@@ -194,15 +201,22 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         >
           <div className="workspace-tabs-shell">
             <TabsList
-              className="grid h-auto w-full grid-cols-3"
-              variant="workspace"
+              className="grid w-full grid-cols-3"
+              variant="line"
               aria-label="Planning workspace"
             >
-            {(["discover", "trip", "itinerary"] as const).map((surface) => (
-              <TabsTrigger key={surface} value={surface}>
-                {surface[0].toUpperCase() + surface.slice(1)}
+              <TabsTrigger value="discover">
+                <CompassIcon data-icon="inline-start" />
+                Discover
               </TabsTrigger>
-            ))}
+              <TabsTrigger value="trip">
+                <LuggageIcon data-icon="inline-start" />
+                Trip
+              </TabsTrigger>
+              <TabsTrigger value="itinerary">
+                <CalendarDaysIcon data-icon="inline-start" />
+                Itinerary
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -243,103 +257,110 @@ function DiscoverSurface({
   onFocus: (destinationId: string) => void;
 }) {
   return (
-    <div className="discover-surface">
-      <div>
-        <p className="eyebrow">Owner-curated Destinations</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-foreground">
-          Discover Batam
-        </h1>
-        <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-          Browse Published Destinations freely. Looking around will not create or
-          change a Trip.
-        </p>
-      </div>
+    <ScrollArea className="surface-scroll">
+      <div className="surface-layout">
+        <header className="surface-intro">
+          <Badge variant="secondary">Batam essentials</Badge>
+          <h1>Where do you want to go?</h1>
+          <p>
+            Explore owner-curated Destinations without creating or changing a
+            Trip.
+          </p>
+        </header>
 
-      {destinations.length === 0 ? (
-        <Empty className="border">
-          <EmptyHeader>
-            <EmptyTitle>No Published Destinations</EmptyTitle>
-            <EmptyDescription>
-              The curated collection is not available yet.
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      ) : (
-        <>
-          <div className="destination-heading">
-            <h2>Destinations</h2>
-            <span>
-              {destinations.length} curated · A–Z
-            </span>
-          </div>
-          <div className="destination-list">
-            {destinations.map((destination) => (
-              <button
-                key={destination.id}
-                type="button"
-                className="destination-card"
-                aria-pressed={destination.id === focusedDestination?.id}
-                onClick={() => onFocus(destination.id)}
-              >
-                <span className="destination-thumbnail" aria-hidden="true">
-                  <MapPinIcon />
-                </span>
-                <span>
-                  <strong>{destination.name}</strong>
-                  <small>
-                    {destination.primaryCategory} · {destination.area}
-                  </small>
-                </span>
-                <span className="focus-arrow" aria-hidden="true">
-                  <ChevronRightIcon />
-                </span>
-              </button>
-            ))}
+        <section
+          className="destination-collection"
+          aria-labelledby="destinations-title"
+        >
+          <div className="collection-heading">
+            <div>
+              <h2 id="destinations-title">Published Destinations</h2>
+              <p>Curated places, ordered A–Z</p>
+            </div>
+            <Badge variant="outline">{destinations.length}</Badge>
           </div>
 
-          {focusedDestination && (
-            <Card>
-              <CardHeader>
-                <p className="eyebrow">
-                  {focusedDestination.primaryCategory} · {focusedDestination.area}
-                </p>
-                <CardTitle>{focusedDestination.name}</CardTitle>
-                <CardDescription>
-                  {focusedDestination.description}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <dl className="facts-grid">
-                  <div>
-                    <dt>Entry cost</dt>
-                    <dd>{focusedDestination.entryCostLabel}</dd>
-                  </div>
-                  <div>
-                    <dt>Typical visit</dt>
-                    <dd>{focusedDestination.typicalVisitMinutes} minutes</dd>
-                  </div>
-                  <div>
-                    <dt>Operating hours</dt>
-                    <dd>{focusedDestination.operatingHoursLabel}</dd>
-                  </div>
-                </dl>
-              </CardContent>
-              <CardFooter>
-                <a
-                  className={buttonVariants({ className: "w-full" })}
-                  href={focusedDestination.googleMapsUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Open in Google Maps
-                  <ArrowUpRightIcon data-icon="inline-end" />
-                </a>
-              </CardFooter>
-            </Card>
+          {destinations.length === 0 ? (
+            <Empty className="border">
+              <EmptyHeader>
+                <EmptyTitle>No Published Destinations</EmptyTitle>
+                <EmptyDescription>
+                  The curated collection is not available yet.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <div className="destination-grid">
+              {destinations.map((destination) => {
+                const isFocused = destination.id === focusedDestination?.id;
+
+                return (
+                  <Card key={destination.id}>
+                    <CardHeader>
+                      <CardTitle>{destination.name}</CardTitle>
+                      <CardDescription>
+                        {destination.primaryCategory} · {destination.area}
+                      </CardDescription>
+                      <CardAction>
+                        {isFocused ? (
+                          <Badge variant="secondary">On map</Badge>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            aria-label={`Show ${destination.name} on map`}
+                            onClick={() => onFocus(destination.id)}
+                          >
+                            <MapPinIcon data-icon="inline-start" />
+                          </Button>
+                        )}
+                      </CardAction>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-4">
+                      <p className="destination-description">
+                        {destination.description}
+                      </p>
+                      <Separator />
+                      <dl className="destination-facts">
+                        <div>
+                          <TicketIcon aria-hidden="true" />
+                          <dt>Entry</dt>
+                          <dd>{destination.entryCostLabel}</dd>
+                        </div>
+                        <div>
+                          <Clock3Icon aria-hidden="true" />
+                          <dt>Visit</dt>
+                          <dd>{destination.typicalVisitMinutes} min</dd>
+                        </div>
+                        <div>
+                          <CalendarDaysIcon aria-hidden="true" />
+                          <dt>Hours</dt>
+                          <dd>{destination.operatingHoursLabel}</dd>
+                        </div>
+                      </dl>
+                    </CardContent>
+                    <CardFooter>
+                      <a
+                        className={buttonVariants({
+                          variant: "outline",
+                          className: "w-full",
+                        })}
+                        href={destination.googleMapsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        View in Google Maps
+                        <ArrowUpRightIcon data-icon="inline-end" />
+                      </a>
+                    </CardFooter>
+                  </Card>
+                );
+              })}
+            </div>
           )}
-        </>
-      )}
-    </div>
+        </section>
+      </div>
+    </ScrollArea>
   );
 }
 
@@ -353,16 +374,18 @@ function EmptySurface({
   body: string;
 }) {
   return (
-    <div className="empty-surface">
-      <Empty className="border">
-        <EmptyHeader>
-          <Badge variant="outline">{eyebrow}</Badge>
-          <EmptyTitle>
-            <h1>{title}</h1>
-          </EmptyTitle>
-          <EmptyDescription>{body}</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    </div>
+    <ScrollArea className="surface-scroll">
+      <div className="empty-surface">
+        <Empty>
+          <EmptyHeader>
+            <Badge variant="outline">{eyebrow}</Badge>
+            <EmptyTitle>
+              <h1>{title}</h1>
+            </EmptyTitle>
+            <EmptyDescription>{body}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </div>
+    </ScrollArea>
   );
 }

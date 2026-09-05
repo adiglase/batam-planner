@@ -50,6 +50,16 @@ function isHttpsUrl(value: string) {
   }
 }
 
+const MAX_FACTUAL_TAGS = 8;
+
+/** Splits a comma-separated owner entry into distinct Factual tags. */
+export function parseFactualTags(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
 export function validateDestinationCandidate(
   candidate: DestinationCandidate,
 ): PublishErrors {
@@ -117,6 +127,36 @@ export function validateDestinationCandidate(
         "Enter Free, Cost unknown, a fixed IDR amount, or an IDR range.";
     }
   }
+  if (candidate.address) {
+    if (!hasLatinText(candidate.address) || candidate.address.length > 200) {
+      errors.address =
+        "Enter an English street address of 200 characters or fewer.";
+    }
+  }
+  const factualTags = parseFactualTags(candidate.factualTags);
+  if (
+    factualTags.length > MAX_FACTUAL_TAGS ||
+    factualTags.some(
+      (tag) => !hasLatinText(tag) || tag.length < 2 || tag.length > 40,
+    )
+  ) {
+    errors.factualTags =
+      "Enter up to 8 comma-separated English tags of 2 to 40 characters each.";
+  }
+  if (
+    candidate.practicalNotes &&
+    (!hasLatinText(candidate.practicalNotes) ||
+      candidate.practicalNotes.length > 500)
+  ) {
+    errors.practicalNotes =
+      "Enter English practical notes of 500 characters or fewer.";
+  }
+  if (
+    candidate.officialWebsiteUrl &&
+    !isHttpsUrl(candidate.officialWebsiteUrl)
+  ) {
+    errors.officialWebsiteUrl = "Enter a valid HTTPS official website link.";
+  }
   if (!isGoogleMapsUrl(candidate.googleMapsUrl)) {
     errors.googleMapsUrl = "Enter a valid HTTPS Google Maps link.";
   }
@@ -154,6 +194,7 @@ export function destinationPreviewFromDraft(
 ): DestinationPreview {
   const candidate = draft.candidate;
   const usesVisitFacts = categoryUsesVisitFacts(candidate.primaryCategory);
+  const factualTags = parseFactualTags(candidate.factualTags);
   return {
     id: draft.destinationId,
     name: candidate.name,
@@ -181,6 +222,14 @@ export function destinationPreviewFromDraft(
       : {}),
     ...(usesVisitFacts && candidate.entryCostLabel
       ? { entryCostLabel: candidate.entryCostLabel }
+      : {}),
+    ...(candidate.address ? { address: candidate.address } : {}),
+    ...(factualTags.length > 0 ? { factualTags } : {}),
+    ...(candidate.practicalNotes
+      ? { practicalNotes: candidate.practicalNotes }
+      : {}),
+    ...(candidate.officialWebsiteUrl
+      ? { officialWebsiteUrl: candidate.officialWebsiteUrl }
       : {}),
     ...(candidate.googleMapsUrl
       ? { googleMapsUrl: candidate.googleMapsUrl }

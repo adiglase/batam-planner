@@ -2,7 +2,6 @@ import {
   ArrowUpRightIcon,
   CalendarDaysIcon,
   Clock3Icon,
-  ImageOffIcon,
   MapPinIcon,
   TicketIcon,
   TriangleAlertIcon,
@@ -24,15 +23,25 @@ import type {
   Destination,
   DestinationPreview,
 } from "~/destinations/destination";
+import {
+  describeEntryCost,
+  describeOperatingHours,
+  entryCostText,
+  formatVisitDuration,
+  operatingHoursText,
+} from "~/destinations/destination-facts";
+import { DestinationMedia } from "~/destinations/destination-media";
 
 export function DestinationPresentationCard({
   destination,
   isFocused = false,
   onFocus,
+  onOpen,
 }: {
   destination: Destination | DestinationPreview;
   isFocused?: boolean;
   onFocus?: (destinationId: string) => void;
+  onOpen?: (destinationId: string) => void;
 }) {
   const hasFacts = Boolean(
     destination.entryCostLabel ||
@@ -42,18 +51,22 @@ export function DestinationPresentationCard({
 
   return (
     <Card>
-      <div className="destination-media">
-        {destination.image ? (
-          <img src={destination.image.url} alt={destination.image.altText} />
-        ) : (
-          <div className="destination-image-placeholder" role="img" aria-label="No image available">
-            <ImageOffIcon aria-hidden="true" />
-            <span>No image available</span>
-          </div>
-        )}
-      </div>
+      <DestinationMedia image={destination.image} />
       <CardHeader>
-        <CardTitle>{destination.name || "Untitled Destination"}</CardTitle>
+        <CardTitle>
+          {onOpen ? (
+            <button
+              type="button"
+              className="destination-name-button"
+              aria-label={`View details for ${destination.name || "Destination"}`}
+              onClick={() => onOpen(destination.id)}
+            >
+              {destination.name || "Untitled Destination"}
+            </button>
+          ) : (
+            destination.name || "Untitled Destination"
+          )}
+        </CardTitle>
         {(destination.primaryCategory || destination.area) && (
           <CardDescription>
             {[destination.primaryCategory, destination.area]
@@ -96,21 +109,29 @@ export function DestinationPresentationCard({
                 <div>
                   <TicketIcon aria-hidden="true" />
                   <dt>Entry</dt>
-                  <dd>{destination.entryCostLabel}</dd>
+                  <dd>
+                    {entryCostText(
+                      describeEntryCost(destination.entryCostLabel),
+                    )}
+                  </dd>
                 </div>
               )}
               {destination.typicalVisitMinutes && (
                 <div>
                   <Clock3Icon aria-hidden="true" />
                   <dt>Visit</dt>
-                  <dd>{destination.typicalVisitMinutes} min</dd>
+                  <dd>{formatVisitDuration(destination.typicalVisitMinutes)}</dd>
                 </div>
               )}
               {destination.operatingHoursLabel && (
                 <div>
                   <CalendarDaysIcon aria-hidden="true" />
                   <dt>Hours</dt>
-                  <dd>{destination.operatingHoursLabel}</dd>
+                  <dd>
+                    {operatingHoursText(
+                      describeOperatingHours(destination.operatingHoursLabel),
+                    )}
+                  </dd>
                 </div>
               )}
             </dl>

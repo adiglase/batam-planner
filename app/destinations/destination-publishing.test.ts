@@ -18,6 +18,10 @@ const publishableCandidate: DestinationCandidate = {
   typicalVisitMinutes: 90,
   operatingHoursLabel: "Open daily, 06:00–18:00",
   entryCostLabel: "Free",
+  address: "Jalan Hang Lekiu, Nongsa, Batam",
+  factualTags: "Beach, Sunset, Quiet",
+  practicalNotes: "Bring small cash for the parking attendant.",
+  officialWebsiteUrl: "https://nongsa-coast.example.com",
   googleMapsUrl:
     "https://www.google.com/maps/search/?api=1&query=Nongsa+Coast+Batam",
   imageUrl: "https://images.example.com/nongsa-coast.jpg",
@@ -55,12 +59,61 @@ describe("Destination publishing", () => {
       expect.objectContaining({
         id: draft.destinationId,
         name: "Nongsa Coast",
+        address: "Jalan Hang Lekiu, Nongsa, Batam",
+        factualTags: ["Beach", "Sunset", "Quiet"],
+        practicalNotes: "Bring small cash for the parking attendant.",
+        officialWebsiteUrl: "https://nongsa-coast.example.com",
         image: {
           url: "https://images.example.com/nongsa-coast.jpg",
           altText: "Rocky Nongsa shoreline beside calm blue water",
         },
       }),
     ]);
+  });
+
+  it("omits absent optional facts from the Published Destination", () => {
+    const draft = repository.createDraft();
+    repository.saveDraft(draft.id, {
+      ...publishableCandidate,
+      address: "",
+      factualTags: "",
+      practicalNotes: "",
+      officialWebsiteUrl: "",
+    });
+
+    expect(repository.publishDraft(draft.id)).toEqual({
+      ok: true,
+      destinationId: draft.destinationId,
+    });
+    const published = repository.listPublished()[0];
+    expect(published).not.toHaveProperty("address");
+    expect(published).not.toHaveProperty("factualTags");
+    expect(published).not.toHaveProperty("practicalNotes");
+    expect(published).not.toHaveProperty("officialWebsiteUrl");
+  });
+
+  it("validates optional facts only when present", () => {
+    const draft = repository.createDraft();
+    repository.saveDraft(draft.id, {
+      ...publishableCandidate,
+      address: "123",
+      factualTags: "x, this tag is far too long to be a factual tag entry",
+      practicalNotes: "12345",
+      officialWebsiteUrl: "http://insecure.example.com",
+    });
+
+    const result = repository.publishDraft(draft.id);
+
+    expect(result).toEqual({
+      ok: false,
+      errors: expect.objectContaining({
+        address: expect.any(String),
+        factualTags: expect.any(String),
+        practicalNotes: expect.any(String),
+        officialWebsiteUrl: expect.any(String),
+      }),
+    });
+    expect(repository.listPublished()).toEqual([]);
   });
 
   it("identifies every invalid field and refuses to Publish", () => {
@@ -141,6 +194,10 @@ describe("Destination publishing", () => {
     const draft = repository.createDraft();
     repository.saveDraft(draft.id, {
       ...publishableCandidate,
+      address: "",
+      factualTags: "",
+      practicalNotes: "",
+      officialWebsiteUrl: "",
       imageUrl: "",
       imageAltText: "",
       imageRightsSource: "private source note",
@@ -157,6 +214,10 @@ describe("Destination publishing", () => {
     );
     expect(preview).not.toHaveProperty("image");
     expect(preview).not.toHaveProperty("imageRightsSource");
+    expect(preview).not.toHaveProperty("address");
+    expect(preview).not.toHaveProperty("factualTags");
+    expect(preview).not.toHaveProperty("practicalNotes");
+    expect(preview).not.toHaveProperty("officialWebsiteUrl");
   });
 
   it("uses the Published omission rules when previewing Accommodation", () => {

@@ -38,6 +38,10 @@ function candidateFromForm(formData: FormData): DestinationCandidate {
     typicalVisitMinutes: numberOrNull(formData, "typicalVisitMinutes"),
     operatingHoursLabel: trimmedFormValue(formData, "operatingHoursLabel"),
     entryCostLabel: trimmedFormValue(formData, "entryCostLabel"),
+    address: trimmedFormValue(formData, "address"),
+    factualTags: trimmedFormValue(formData, "factualTags"),
+    practicalNotes: trimmedFormValue(formData, "practicalNotes"),
+    officialWebsiteUrl: trimmedFormValue(formData, "officialWebsiteUrl"),
     googleMapsUrl: trimmedFormValue(formData, "googleMapsUrl"),
     imageUrl: trimmedFormValue(formData, "imageUrl"),
     imageAltText: trimmedFormValue(formData, "imageAltText"),
@@ -201,6 +205,36 @@ export default function OwnerDestinationEdit({ loaderData, actionData }: Route.C
                   <FieldLabel htmlFor="google-maps-url">Google Maps link</FieldLabel>
                   <Input id="google-maps-url" name="googleMapsUrl" type="url" defaultValue={candidate.googleMapsUrl} aria-invalid={Boolean(error("googleMapsUrl"))} />
                   <FieldError>{error("googleMapsUrl")}</FieldError>
+                </Field>
+                <Field data-invalid={Boolean(error("officialWebsiteUrl"))}>
+                  <FieldLabel htmlFor="official-website-url">Official website</FieldLabel>
+                  <Input id="official-website-url" name="officialWebsiteUrl" type="url" defaultValue={candidate.officialWebsiteUrl} aria-invalid={Boolean(error("officialWebsiteUrl"))} />
+                  <FieldDescription>Optional; the only external website link Visitors see, besides Google Maps.</FieldDescription>
+                  <FieldError>{error("officialWebsiteUrl")}</FieldError>
+                </Field>
+              </FieldGroup>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle>Optional facts</CardTitle><CardDescription>Each fact is omitted from the Visitor presentation when empty.</CardDescription></CardHeader>
+            <CardContent>
+              <FieldGroup>
+                <Field data-invalid={Boolean(error("address"))}>
+                  <FieldLabel htmlFor="address">Street address</FieldLabel>
+                  <Input id="address" name="address" defaultValue={candidate.address} aria-invalid={Boolean(error("address"))} />
+                  <FieldError>{error("address")}</FieldError>
+                </Field>
+                <Field data-invalid={Boolean(error("factualTags"))}>
+                  <FieldLabel htmlFor="factual-tags">Factual tags</FieldLabel>
+                  <Input id="factual-tags" name="factualTags" defaultValue={candidate.factualTags} aria-invalid={Boolean(error("factualTags"))} placeholder="Beach, Sunset" />
+                  <FieldDescription>Comma-separated; up to 8 short English tags.</FieldDescription>
+                  <FieldError>{error("factualTags")}</FieldError>
+                </Field>
+                <Field data-invalid={Boolean(error("practicalNotes"))}>
+                  <FieldLabel htmlFor="practical-notes">Practical notes</FieldLabel>
+                  <Textarea id="practical-notes" name="practicalNotes" defaultValue={candidate.practicalNotes} aria-invalid={Boolean(error("practicalNotes"))} />
+                  <FieldError>{error("practicalNotes")}</FieldError>
                 </Field>
               </FieldGroup>
             </CardContent>

@@ -32,6 +32,10 @@ export type Destination = {
   typicalVisitMinutes?: number;
   operatingHoursLabel?: string;
   entryCostLabel?: string;
+  address?: string;
+  factualTags?: string[];
+  practicalNotes?: string;
+  officialWebsiteUrl?: string;
   googleMapsUrl: string;
   image?: DestinationImage;
 };
@@ -47,6 +51,10 @@ export type DestinationCandidate = {
   typicalVisitMinutes: number | null;
   operatingHoursLabel: string;
   entryCostLabel: string;
+  address: string;
+  factualTags: string;
+  practicalNotes: string;
+  officialWebsiteUrl: string;
   googleMapsUrl: string;
   imageUrl: string;
   imageAltText: string;
@@ -72,6 +80,10 @@ export type DestinationPreview = {
   typicalVisitMinutes?: number;
   operatingHoursLabel?: string;
   entryCostLabel?: string;
+  address?: string;
+  factualTags?: string[];
+  practicalNotes?: string;
+  officialWebsiteUrl?: string;
   googleMapsUrl?: string;
   image?: DestinationImage;
 };

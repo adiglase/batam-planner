@@ -23,7 +23,7 @@ export function IllustratedMap({
           type="button"
           className="map-marker"
           aria-pressed={marker.id === focusedDestinationId}
-          aria-label={`Focus ${marker.label}`}
+          aria-label={`View details for ${marker.label}`}
           onClick={() => onFocus(marker.id)}
         >
           <span aria-hidden="true">•</span>
@@ -35,7 +35,7 @@ export function IllustratedMap({
           {markers.find(({ id }) => id === focusedDestinationId)?.label ??
             "Explore Batam"}
         </strong>
-        <span>Selected Destination</span>
+        <span>Focused Destination</span>
       </div>
     </div>
   );

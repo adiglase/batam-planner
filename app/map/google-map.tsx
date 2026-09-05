@@ -36,9 +36,11 @@ type GoogleMapsApi = {
 declare global {
   interface Window {
     google?: { maps: GoogleMapsApi };
+    __batamPlannerGoogleMapsLoaded?: () => void;
   }
 }
 
+const GOOGLE_MAPS_CALLBACK = "__batamPlannerGoogleMapsLoaded";
 let googleMapsPromise: Promise<GoogleMapsApi> | undefined;
 
 export function googleMapsScriptUrl(apiKey: string) {
@@ -46,10 +48,11 @@ export function googleMapsScriptUrl(apiKey: string) {
   source.searchParams.set("key", apiKey);
   source.searchParams.set("loading", "async");
   source.searchParams.set("v", "weekly");
+  source.searchParams.set("callback", GOOGLE_MAPS_CALLBACK);
   return source;
 }
 
-function loadGoogleMaps(apiKey: string) {
+export function loadGoogleMaps(apiKey: string) {
   if (window.google?.maps) return Promise.resolve(window.google.maps);
   if (googleMapsPromise) return googleMapsPromise;
 
@@ -57,6 +60,7 @@ function loadGoogleMaps(apiKey: string) {
     const script = document.createElement("script");
     const fail = (message: string) => {
       script.remove();
+      delete window.__batamPlannerGoogleMapsLoaded;
       googleMapsPromise = undefined;
       reject(new Error(message));
     };
@@ -64,7 +68,8 @@ function loadGoogleMaps(apiKey: string) {
     script.src = source.toString();
     script.async = true;
     script.onerror = () => fail("Google Maps failed to load");
-    script.onload = () => {
+    window.__batamPlannerGoogleMapsLoaded = () => {
+      delete window.__batamPlannerGoogleMapsLoaded;
       if (window.google?.maps) resolve(window.google.maps);
       else fail("Google Maps loaded without its browser API");
     };

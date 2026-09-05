@@ -4,16 +4,19 @@
   "type": "module",
   "scripts": {
     "build": "react-router build",
-    "dev": "react-router dev",
-    "start": "react-router-serve ./build/server/index.js",
-    "typecheck": "react-router typegen && tsc"
+    "dev": "node --env-file-if-exists=.env ./node_modules/@react-router/dev/bin.cjs dev",
+    "start": "node --env-file-if-exists=.env ./node_modules/@react-router/serve/bin.cjs ./build/server/index.js",
+    "test": "vitest run",
+    "typecheck": "react-router typegen && tsc",
+    "auth:migrate": "node --env-file-if-exists=.env scripts/auth-migrate.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
     "@fontsource-variable/geist": "^5.3.0",
     "@react-router/node": "^8",
     "@react-router/serve": "^8",
-    "better-sqlite3": "^13.0.3",
+    "better-auth": "1.7.2",
+    "better-sqlite3": "12.11.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "isbot": "^5.1.36",
@@ -34,9 +37,10 @@
     "shadcn": "^4.20.1",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.9.3",
-    "vite": "^8.0.3"
+    "vite": "^8.0.3",
+    "vitest": "4.1.11"
   },
   "allowScripts": {
-    "better-sqlite3@13.0.3": true
+    "better-sqlite3@12.11.1": true
   }
 }

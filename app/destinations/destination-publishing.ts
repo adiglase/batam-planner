@@ -7,6 +7,10 @@ import {
   type OperationalStatus,
 } from "./destination";
 import type { PublishErrors } from "./destination-repository.server";
+import {
+  describeEntryCost,
+  describeOperatingHours,
+} from "./destination-facts";
 
 const OPERATIONAL_STATUSES: OperationalStatus[] = [
   "Open",
@@ -218,10 +222,10 @@ export function destinationPreviewFromDraft(
       ? { typicalVisitMinutes: candidate.typicalVisitMinutes }
       : {}),
     ...(usesVisitFacts && candidate.operatingHoursLabel
-      ? { operatingHoursLabel: candidate.operatingHoursLabel }
+      ? { operatingHours: describeOperatingHours(candidate.operatingHoursLabel) }
       : {}),
     ...(usesVisitFacts && candidate.entryCostLabel
-      ? { entryCostLabel: candidate.entryCostLabel }
+      ? { entryCost: describeEntryCost(candidate.entryCostLabel) }
       : {}),
     ...(candidate.address ? { address: candidate.address } : {}),
     ...(factualTags.length > 0 ? { factualTags } : {}),

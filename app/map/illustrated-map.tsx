@@ -4,7 +4,7 @@ import { Badge } from "~/components/ui/badge";
 export function IllustratedMap({
   markers,
   focusedDestinationId,
-  onFocus,
+  onOpenDestination,
 }: MapPresentation) {
   return (
     <div className="illustrated-map">
@@ -24,7 +24,7 @@ export function IllustratedMap({
           className="map-marker"
           aria-pressed={marker.id === focusedDestinationId}
           aria-label={`View details for ${marker.label}`}
-          onClick={() => onFocus(marker.id)}
+          onClick={() => onOpenDestination(marker.id)}
         >
           <span aria-hidden="true">•</span>
         </button>

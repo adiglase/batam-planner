@@ -1,19 +1,13 @@
+import type {
+  EntryCostFacts,
+  OperatingHoursFacts,
+} from "~/destinations/destination";
+
 const IDR_AMOUNT = "(?:0|[1-9]\\d{0,2}(?:,\\d{3})+|[1-9]\\d*)";
 
 const ENTRY_COST_PATTERN = new RegExp(
   `^IDR (${IDR_AMOUNT})(?:\\s*[–-]\\s*(?:IDR )?(${IDR_AMOUNT}))?`,
 );
-
-export type EntryCostFacts =
-  | { kind: "free"; qualification?: string }
-  | { kind: "fixed"; amountIdr: number; qualification?: string }
-  | { kind: "range"; minIdr: number; maxIdr: number; qualification?: string }
-  | { kind: "unknown"; qualification?: string };
-
-export type OperatingHoursFacts =
-  | { kind: "unknown" }
-  | { kind: "unrestricted" }
-  | { kind: "periods"; text: string };
 
 function parseIdrAmount(value: string) {
   return Number(value.replace(/,/g, ""));

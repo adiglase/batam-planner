@@ -59,6 +59,11 @@ describe("Destination publishing", () => {
       expect.objectContaining({
         id: draft.destinationId,
         name: "Nongsa Coast",
+        entryCost: { kind: "free" },
+        operatingHours: {
+          kind: "periods",
+          text: "Open daily, 06:00–18:00",
+        },
         address: "Jalan Hang Lekiu, Nongsa, Batam",
         factualTags: ["Beach", "Sunset", "Quiet"],
         practicalNotes: "Bring small cash for the parking attendant.",
@@ -233,8 +238,8 @@ describe("Destination publishing", () => {
     const preview = repository.previewDraft(draft.id);
 
     expect(preview).not.toHaveProperty("typicalVisitMinutes");
-    expect(preview).not.toHaveProperty("operatingHoursLabel");
-    expect(preview).not.toHaveProperty("entryCostLabel");
+    expect(preview).not.toHaveProperty("operatingHours");
+    expect(preview).not.toHaveProperty("entryCost");
   });
 
   it("publishes ungrouped fixed IDR ranges", () => {

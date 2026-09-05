@@ -17,6 +17,10 @@ import {
   parseFactualTags,
   validateDestinationCandidate,
 } from "./destination-publishing";
+import {
+  describeEntryCost,
+  describeOperatingHours,
+} from "./destination-facts";
 import type {
   DestinationRepository,
   OwnerDestination,
@@ -130,8 +134,8 @@ function destinationFromRow(row: DestinationRow): Destination {
     operationalStatus: row.operational_status,
     ...(usesVisitFacts && {
       typicalVisitMinutes: row.typical_visit_minutes,
-      operatingHoursLabel: row.operating_hours_label,
-      entryCostLabel: row.entry_cost_label,
+      operatingHours: describeOperatingHours(row.operating_hours_label),
+      entryCost: describeEntryCost(row.entry_cost_label),
     }),
     ...(row.address ? { address: row.address } : {}),
     ...(factualTags.length > 0 ? { factualTags } : {}),

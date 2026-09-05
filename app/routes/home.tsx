@@ -26,7 +26,9 @@ import type { Destination } from "~/destinations/destination";
 import { DestinationDetails } from "~/destinations/destination-details";
 import { DestinationPresentationCard } from "~/destinations/destination-presentation-card";
 import { getDestinationRepository } from "~/destinations/sqlite-destination-repository.server";
+import { BATAM_MAP_CENTER } from "~/geography/coordinates";
 import { ConfiguredMap } from "~/map/configured-map";
+import type { MapViewport } from "~/map/map-provider";
 
 export function meta() {
   return [
@@ -60,6 +62,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     destinations[0]?.id ?? null,
   );
   const [viewingId, setViewingId] = useState<string | null>(null);
+  const [mapViewport, setMapViewport] = useState<MapViewport>({
+    center: BATAM_MAP_CENTER,
+    zoom: 10,
+  });
   const [split, setSplit] = useState<Split>({ desktop: 60, mobile: 45 });
   const [phoneLayout, setPhoneLayout] = useState(false);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -68,6 +74,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   const restoreRef = useRef<{
     focusedId: string | null;
     scrollTop: number;
+    surface: Surface;
+    mapViewport: MapViewport;
   } | null>(null);
 
   useEffect(() => {
@@ -103,25 +111,57 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   // Destination and never touches Trip state.
   const openDetails = useCallback(
     (destinationId: string) => {
+      const destination = destinations.find(({ id }) => id === destinationId);
+      if (!destination) return;
+
       // Snapshot the results context once per details visit so moving
       // between Destinations via the map keeps the original context.
       if (!viewingId) {
         restoreRef.current = {
           focusedId,
           scrollTop: discoverViewport()?.scrollTop ?? 0,
+          surface: activeSurface,
+          mapViewport,
         };
       }
       setFocusedId(destinationId);
       setViewingId(destinationId);
       setActiveSurface("discover");
+      setMapViewport((current) => ({
+        center: destination.coordinates,
+        zoom: current.zoom,
+      }));
     },
-    [discoverViewport, focusedId, viewingId],
+    [
+      activeSurface,
+      destinations,
+      discoverViewport,
+      focusedId,
+      mapViewport,
+      viewingId,
+    ],
   );
 
   const backToResults = useCallback(() => {
     setViewingId(null);
     const restore = restoreRef.current;
-    if (restore) setFocusedId(restore.focusedId);
+    if (!restore) return;
+    setFocusedId(restore.focusedId);
+    setActiveSurface(restore.surface);
+    setMapViewport(restore.mapViewport);
+  }, []);
+
+  const updateMapViewport = useCallback((next: MapViewport) => {
+    setMapViewport((current) => {
+      if (
+        current.zoom === next.zoom &&
+        current.center.latitude === next.center.latitude &&
+        current.center.longitude === next.center.longitude
+      ) {
+        return current;
+      }
+      return next;
+    });
   }, []);
 
   // Restore the exact results position after reversible detail navigation;
@@ -191,7 +231,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           <ConfiguredMap
             markers={mapMarkers}
             focusedDestinationId={focusedDestination?.id ?? null}
-            onFocus={openDetails}
+            viewport={mapViewport}
+            onViewportChange={updateMapViewport}
+            onOpenDestination={openDetails}
           />
         </section>
 
@@ -266,7 +308,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 destinations={destinations}
                 focusedDestination={focusedDestination}
                 viewingDestination={viewingDestination}
-                onFocus={setFocusedId}
                 onOpen={openDetails}
                 onBack={backToResults}
               />
@@ -296,14 +337,12 @@ function DiscoverSurface({
   destinations,
   focusedDestination,
   viewingDestination,
-  onFocus,
   onOpen,
   onBack,
 }: {
   destinations: Destination[];
   focusedDestination?: Destination;
   viewingDestination?: Destination;
-  onFocus: (destinationId: string) => void;
   onOpen: (destinationId: string) => void;
   onBack: () => void;
 }) {
@@ -363,7 +402,6 @@ function DiscoverSurface({
                     key={destination.id}
                     destination={destination}
                     isFocused={isFocused}
-                    onFocus={onFocus}
                     onOpen={onOpen}
                   />
                 );

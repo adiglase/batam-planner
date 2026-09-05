@@ -573,30 +573,6 @@ a {
   line-height: 1.2;
 }
 
-.destination-name-button {
-  margin: 0;
-  border: 0;
-  background: none;
-  padding: 0;
-  color: inherit;
-  font: inherit;
-  letter-spacing: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.destination-name-button:hover {
-  color: var(--primary);
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
-}
-
-.destination-name-button:focus-visible {
-  border-radius: var(--radius-sm);
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
 .destination-detail-layout {
   display: flex;
   flex-direction: column;
@@ -605,19 +581,7 @@ a {
 }
 
 .destination-detail {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--card);
-  padding-bottom: 1.5rem;
-}
-
-.destination-detail > :not(.destination-media) {
-  margin-right: 1.5rem;
-  margin-left: 1.5rem;
+  padding-top: 0;
 }
 
 .destination-detail-media {
@@ -718,6 +682,7 @@ a {
 .destination-detail-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
 }
 

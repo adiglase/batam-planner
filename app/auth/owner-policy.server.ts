@@ -2,7 +2,9 @@ import type Database from "better-sqlite3";
 
 export const OWNER_DENIED = "owner_not_authorized";
 export class OwnerAccessDenied extends Error {
-  constructor() { super(OWNER_DENIED); }
+  constructor() {
+    super(OWNER_DENIED);
+  }
 }
 
 export function createOwnerIdentityTable(database: Database.Database) {
@@ -17,6 +19,8 @@ type GoogleIdentity = { subject: string; email: string; verified: boolean };
 
 /** Email admits the first owner only; the durable subject is authoritative afterward. */
 export function createOwnerPolicy(database: Database.Database, bootstrapEmail: string) {
+  const normalizedBootstrapEmail = bootstrapEmail.trim().toLowerCase();
+
   function boundSubject(): string | undefined {
     const row = database.prepare(
       "SELECT google_subject FROM owner_identity WHERE singleton = 1",
@@ -24,11 +28,12 @@ export function createOwnerPolicy(database: Database.Database, bootstrapEmail: s
     return row?.google_subject;
   }
 
-  function accepts(identity: GoogleIdentity) {
+  function acceptsGoogleIdentity(identity: GoogleIdentity) {
     if (!identity.subject || !identity.verified) return false;
     const bound = boundSubject();
-    return bound ? bound === identity.subject : Boolean(bootstrapEmail.trim()) &&
-      identity.email.trim().toLowerCase() === bootstrapEmail.trim().toLowerCase();
+    if (bound) return bound === identity.subject;
+    return Boolean(normalizedBootstrapEmail) &&
+      identity.email.trim().toLowerCase() === normalizedBootstrapEmail;
   }
 
   function identityForUser(userId: string): GoogleIdentity | undefined {
@@ -42,10 +47,11 @@ export function createOwnerPolicy(database: Database.Database, bootstrapEmail: s
     return { ...rows[0], verified: rows[0].verified === 1 };
   }
 
-  function bindForSession(userId: string) {
+  /** Atomically bind the first owner or verify the existing binding before issuing a session. */
+  function bindOwnerForSession(userId: string) {
     return database.transaction(() => {
       const identity = identityForUser(userId);
-      if (!identity || !accepts(identity)) throw new OwnerAccessDenied();
+      if (!identity || !acceptsGoogleIdentity(identity)) throw new OwnerAccessDenied();
       database.prepare(`
         INSERT OR IGNORE INTO owner_identity (singleton, google_subject, bound_at)
         VALUES (1, ?, ?)
@@ -54,9 +60,9 @@ export function createOwnerPolicy(database: Database.Database, bootstrapEmail: s
     }).immediate();
   }
 
-  function isOwner(userId: string) {
+  function isOwnerUser(userId: string) {
     const identity = identityForUser(userId);
     return Boolean(identity?.verified && identity.subject === boundSubject());
   }
-  return { accepts, bindForSession, isOwner };
+  return { acceptsGoogleIdentity, bindOwnerForSession, isOwnerUser };
 }

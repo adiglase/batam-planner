@@ -1,4 +1,7 @@
-import { createOwnerAuth, migrateOwnerAuth, openAuthDatabase, readOwnerAuthConfig } from "../app/auth/better-auth.server.ts";
+import { createOwnerAuth } from "../app/auth/better-auth.server.ts";
+import { readOwnerAuthConfig } from "../app/auth/auth-config.server.ts";
+import { openAuthDatabase } from "../app/auth/auth-database.server.ts";
+import { migrateOwnerAuth } from "../app/auth/auth-migrations.server.ts";
 
 const config = readOwnerAuthConfig();
 const database = openAuthDatabase(config);

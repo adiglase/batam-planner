@@ -1,5 +1,6 @@
+import { AuthNotConfigured } from "~/auth/auth-config.server";
 import type { Route } from "./+types/auth-api";
-import { AuthNotConfigured, getOwnerAuth } from "~/auth/better-auth.server";
+import { getOwnerAuth } from "~/auth/better-auth.server";
 import { LOGIN_NOT_CONFIGURED } from "~/auth/login-messages";
 
 async function handle({ request }: Route.LoaderArgs | Route.ActionArgs) {

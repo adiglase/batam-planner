@@ -1,3 +1,6 @@
+import { requireAuthSchema } from "./auth-database.server.ts";
+import { AuthNotConfigured, readOwnerAuthConfig } from "./auth-config.server.ts";
+import { migrateOwnerAuth } from "./auth-migrations.server.ts";
 import Database from "better-sqlite3";
 import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -5,8 +8,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createOwnerAuth, migrateOwnerAuth, readOwnerAuthConfig, AuthNotConfigured, type OwnerAuthRuntime } from "./better-auth.server";
-import { endOwnerSession, requireOwner } from "./owner-auth.server";
+import { createOwnerAuth, getOwnerAuth, resetOwnerAuthForTests, type OwnerAuthRuntime } from "./better-auth.server.ts";
+import { endOwnerSession, requireOwner } from "./owner-auth.server.ts";
 import { loginErrorMessage, LOGIN_DENIED, LOGIN_FAILED } from "./login-messages";
 import { SqliteDestinationRepository } from "~/destinations/sqlite-destination-repository.server";
 import { loader as listLoader, action as listAction } from "~/routes/owner-destinations";
@@ -14,15 +17,6 @@ import { loader as editLoader, action as editAction } from "~/routes/owner-desti
 import { loader as previewLoader } from "~/routes/owner-destination-preview";
 import { loader as loginLoader } from "~/routes/owner-login";
 import { loader as oldCallback } from "~/routes/owner-callback";
-
-const state = vi.hoisted(() => ({ runtime: null as OwnerAuthRuntime | null }));
-vi.mock("~/auth/better-auth.server", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./better-auth.server")>();
-  return { ...actual, getOwnerAuth: () => {
-    if (!state.runtime) throw new actual.AuthNotConfigured("Missing test configuration");
-    return state.runtime;
-  } };
-});
 
 const origin = "http://localhost:5173";
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -61,10 +55,17 @@ describe("Google-only owner authentication", () => {
 
   beforeEach(async () => {
     directory = mkdtempSync(path.join(tmpdir(), "batam-owner-auth-"));
+    resetOwnerAuthForTests();
+    vi.stubEnv("BETTER_AUTH_URL", config.baseURL);
+    vi.stubEnv("BETTER_AUTH_SECRET", config.secret);
+    vi.stubEnv("GOOGLE_CLIENT_ID", config.clientId);
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", config.clientSecret);
+    vi.stubEnv("DATABASE_PATH", path.join(directory, "test.sqlite"));
     database = new Database(path.join(directory, "test.sqlite"));
     runtime = createOwnerAuth(database, config);
     await migrateOwnerAuth(runtime);
-    state.runtime = runtime;
+    resetOwnerAuthForTests();
+    vi.stubEnv("OWNER_BOOTSTRAP_EMAIL", runtime.config.bootstrapEmail);
     tokenResponses = new Map();
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -81,10 +82,12 @@ describe("Google-only owner authentication", () => {
   });
 
   afterEach(() => {
-    state.runtime = null;
+    resetOwnerAuthForTests();
     database.close();
     rmSync(directory, { recursive: true, force: true });
+    vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -112,6 +115,8 @@ describe("Google-only owner authentication", () => {
   }
 
   it("registers the verified owner through the real Google callback and protects the workspace", async () => {
+    // Better Auth reads the clock separately for creation and expiration.
+    vi.useFakeTimers({ toFake: ["Date"] });
     const response = await login();
     expect(response.headers.get("Location")).toBe("/owner/destinations");
     expect(count("user")).toBe(1);
@@ -142,7 +147,8 @@ describe("Google-only owner authentication", () => {
     const denied = await login({ ...owner, sub: "different-google-account" });
     expect(loginErrorMessage(new URL(denied.headers.get("Location")!, origin).searchParams.get("error"))).toBe(LOGIN_DENIED);
     runtime = createOwnerAuth(database, { ...config, bootstrapEmail: "new@example.com" });
-    state.runtime = runtime;
+    resetOwnerAuthForTests();
+    vi.stubEnv("OWNER_BOOTSTRAP_EMAIL", runtime.config.bootstrapEmail);
     const allowed = await login({ ...owner, email: "changed@example.com" });
     expect(allowed.headers.get("Location")).toBe("/owner/destinations");
     const other = await login({ ...owner, sub: "other", email: "new@example.com" });
@@ -164,6 +170,34 @@ describe("Google-only owner authentication", () => {
     expect(response.headers.getSetCookie().length).toBeGreaterThan(0);
     expect(count("session")).toBe(0);
     await expect(requireOwner(request("/owner/destinations", "GET", cookie), runtime)).rejects.toMatchObject({ status: 302 });
+  });
+
+  it("rejects non-POST and missing-origin sign-out without revoking the session", async () => {
+    const cookie = cookies(await login());
+    for (const method of ["GET", "HEAD", "PUT", "DELETE"]) {
+      await expect(endOwnerSession(request("/owner/logout", method, cookie), runtime))
+        .rejects.toMatchObject({ status: 405 });
+    }
+    const missingOrigin = request("/owner/logout", "POST", cookie);
+    missingOrigin.headers.delete("Origin");
+    await expect(endOwnerSession(missingOrigin, runtime)).rejects.toMatchObject({ status: 403 });
+    expect(count("session")).toBe(1);
+  });
+
+  it("checks schema readiness without creating missing tables", () => {
+    expect(() => requireAuthSchema(database)).not.toThrow();
+    database.exec("DROP TABLE verification");
+    expect(() => requireAuthSchema(database)).toThrow(AuthNotConfigured);
+    expect(database.prepare("SELECT name FROM sqlite_master WHERE name = 'verification'").get()).toBeUndefined();
+  });
+
+  it("resets the cached runtime and closes only its own database connection", () => {
+    const cached = getOwnerAuth();
+    expect(getOwnerAuth()).toBe(cached);
+    resetOwnerAuthForTests();
+    expect(cached.database.open).toBe(false);
+    expect(database.open).toBe(true);
+    expect(getOwnerAuth()).not.toBe(cached);
   });
 
   it("rejects expired, forged, and legacy cookies", async () => {
@@ -263,7 +297,8 @@ describe("Google-only owner authentication", () => {
 
   it("fails closed on missing configuration and rejects invalid origins", async () => {
     expect(() => readOwnerAuthConfig({})).toThrow(AuthNotConfigured);
-    state.runtime = null;
+    resetOwnerAuthForTests();
+    vi.stubEnv("BETTER_AUTH_SECRET", "");
     const result = await loginLoader({ request: request("/owner/login") } as never);
     expect(result).toMatchObject({ data: { configured: false, message: "Owner sign-in is not configured yet." }, init: { status: 503 } });
   });

@@ -1,9 +1,10 @@
+import { AuthNotConfigured } from "~/auth/auth-config.server";
 import { useRef, useState } from "react";
 import { data, Link, redirect } from "react-router";
 import { ArrowLeftIcon, LoaderCircleIcon } from "lucide-react";
 
 import type { Route } from "./+types/owner-login";
-import { AuthNotConfigured, getOwnerAuth } from "~/auth/better-auth.server";
+import { getOwnerAccess } from "~/auth/owner-auth.server";
 import { authClient } from "~/auth/auth-client";
 import { LOGIN_DENIED, LOGIN_FAILED, LOGIN_NOT_CONFIGURED, loginErrorMessage } from "~/auth/login-messages";
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
@@ -17,13 +18,12 @@ export function meta() {
 export async function loader({ request }: Route.LoaderArgs) {
   const headers = { "Cache-Control": "no-store" };
   try {
-    const runtime = getOwnerAuth();
-    const session = await runtime.auth.api.getSession({ headers: request.headers });
-    if (session && runtime.policy.isOwner(session.user.id)) {
+    const access = await getOwnerAccess(request);
+    if (access.status === "owner") {
       return redirect("/owner/destinations", { headers });
     }
     const error = new URL(request.url).searchParams.get("error");
-    return data({ configured: true, message: session ? LOGIN_DENIED : loginErrorMessage(error) }, { headers });
+    return data({ configured: true, message: access.status === "denied" ? LOGIN_DENIED : loginErrorMessage(error) }, { headers });
   } catch (error) {
     if (!(error instanceof AuthNotConfigured)) throw error;
     console.error(`[owner-auth] ${error.message}`);

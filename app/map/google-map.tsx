@@ -41,6 +41,14 @@ declare global {
 
 let googleMapsPromise: Promise<GoogleMapsApi> | undefined;
 
+export function googleMapsScriptUrl(apiKey: string) {
+  const source = new URL("https://maps.googleapis.com/maps/api/js");
+  source.searchParams.set("key", apiKey);
+  source.searchParams.set("loading", "async");
+  source.searchParams.set("v", "weekly");
+  return source;
+}
+
 function loadGoogleMaps(apiKey: string) {
   if (window.google?.maps) return Promise.resolve(window.google.maps);
   if (googleMapsPromise) return googleMapsPromise;
@@ -52,9 +60,7 @@ function loadGoogleMaps(apiKey: string) {
       googleMapsPromise = undefined;
       reject(new Error(message));
     };
-    const source = new URL("https://maps.googleapis.com/maps/api/js");
-    source.searchParams.set("key", apiKey);
-    source.searchParams.set("v", "weekly");
+    const source = googleMapsScriptUrl(apiKey);
     script.src = source.toString();
     script.async = true;
     script.onerror = () => fail("Google Maps failed to load");

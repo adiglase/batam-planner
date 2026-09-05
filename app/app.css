@@ -246,6 +246,13 @@ a {
   outline-offset: 3px;
 }
 
+.map-marker[aria-pressed="true"] {
+  z-index: 5;
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+  transform: rotate(-45deg) scale(1.25);
+}
+
 .map-caption {
   position: absolute;
   z-index: 5;

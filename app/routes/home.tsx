@@ -107,39 +107,66 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     [],
   );
 
+  // Latest committed selection context for the stable openDetails below.
+  // Keeping these in a ref prevents a new callback identity on every
+  // selection, which previously retriggered the map marker effect.
+  // Updated in an effect so the snapshot never captures an uncommitted
+  // render or a mid-settle map position.
+  const openContextRef = useRef({
+    activeSurface,
+    destinations,
+    focusedId,
+    mapViewport,
+    viewingId,
+  });
+  useEffect(() => {
+    openContextRef.current = {
+      activeSurface,
+      destinations,
+      focusedId,
+      mapViewport,
+      viewingId,
+    };
+  }, [activeSurface, destinations, focusedId, mapViewport, viewingId]);
+
   // Inspecting a Destination is view-only: opening details focuses the
   // Destination and never touches Trip state.
+  // Only list selection recenters the map; map marker selection leaves
+  // the viewport untouched so clicking a point never shifts the view.
   const openDetails = useCallback(
-    (destinationId: string) => {
-      const destination = destinations.find(({ id }) => id === destinationId);
+    (destinationId: string, centerMap = true) => {
+      const snapshot = openContextRef.current;
+      const destination = snapshot.destinations.find(
+        ({ id }) => id === destinationId,
+      );
       if (!destination) return;
 
       // Snapshot the results context once per details visit so moving
       // between Destinations via the map keeps the original context.
-      if (!viewingId) {
+      if (!snapshot.viewingId) {
         restoreRef.current = {
-          focusedId,
+          focusedId: snapshot.focusedId,
           scrollTop: discoverViewport()?.scrollTop ?? 0,
-          surface: activeSurface,
-          mapViewport,
+          surface: snapshot.activeSurface,
+          mapViewport: snapshot.mapViewport,
         };
       }
       setFocusedId(destinationId);
       setViewingId(destinationId);
       setActiveSurface("discover");
-      setMapViewport((current) => ({
-        center: destination.coordinates,
-        zoom: current.zoom,
-      }));
+      if (centerMap) {
+        setMapViewport((current) => ({
+          center: destination.coordinates,
+          zoom: current.zoom,
+        }));
+      }
     },
-    [
-      activeSurface,
-      destinations,
-      discoverViewport,
-      focusedId,
-      mapViewport,
-      viewingId,
-    ],
+    [discoverViewport],
+  );
+
+  const openFromMap = useCallback(
+    (destinationId: string) => openDetails(destinationId, false),
+    [openDetails],
   );
 
   const backToResults = useCallback(() => {
@@ -233,7 +260,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             focusedDestinationId={focusedDestination?.id ?? null}
             viewport={mapViewport}
             onViewportChange={updateMapViewport}
-            onOpenDestination={openDetails}
+            onOpenDestination={openFromMap}
           />
         </section>
 

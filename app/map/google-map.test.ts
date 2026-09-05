@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { googleMapsScriptUrl, loadGoogleMaps } from "./google-map";
+import {
+  googleMapsScriptUrl,
+  isMapViewportSynced,
+  loadGoogleMaps,
+} from "./google-map";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -43,5 +47,52 @@ describe("googleMapsScriptUrl", () => {
     vi.stubGlobal("document", fakeDocument);
 
     await expect(loadGoogleMaps("test-key")).resolves.toBe(maps);
+  });
+});
+
+describe("isMapViewportSynced", () => {
+  const desired = {
+    center: { latitude: 1.0456, longitude: 104.0305 },
+    zoom: 10,
+  };
+
+  it("treats an exact match as synced", () => {
+    expect(
+      isMapViewportSynced(
+        { latitude: 1.0456, longitude: 104.0305, zoom: 10 },
+        desired,
+      ),
+    ).toBe(true);
+  });
+
+  it("ignores float noise from the Maps API round-trip", () => {
+    expect(
+      isMapViewportSynced(
+        { latitude: 1.0456000000001, longitude: 104.0305, zoom: 10 },
+        desired,
+      ),
+    ).toBe(true);
+  });
+
+  it("detects a real center drift", () => {
+    expect(
+      isMapViewportSynced(
+        { latitude: 1.13, longitude: 104.03, zoom: 10 },
+        desired,
+      ),
+    ).toBe(false);
+  });
+
+  it("detects a zoom change", () => {
+    expect(
+      isMapViewportSynced(
+        { latitude: 1.0456, longitude: 104.0305, zoom: 12 },
+        desired,
+      ),
+    ).toBe(false);
+  });
+
+  it("treats a missing reading as drifted", () => {
+    expect(isMapViewportSynced(undefined, desired)).toBe(false);
   });
 });

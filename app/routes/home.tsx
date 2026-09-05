@@ -23,9 +23,12 @@ import {
 } from "~/components/ui/tabs";
 import type { Route } from "./+types/home";
 import type { Destination } from "~/destinations/destination";
+import { DestinationDetails } from "~/destinations/destination-details";
 import { DestinationPresentationCard } from "~/destinations/destination-presentation-card";
 import { getDestinationRepository } from "~/destinations/sqlite-destination-repository.server";
+import { BATAM_MAP_CENTER } from "~/geography/coordinates";
 import { ConfiguredMap } from "~/map/configured-map";
+import type { MapViewport } from "~/map/map-provider";
 
 export function meta() {
   return [
@@ -55,11 +58,25 @@ function clampRegionShare(value: number) {
 export default function Home({ loaderData }: Route.ComponentProps) {
   const { destinations } = loaderData;
   const [activeSurface, setActiveSurface] = useState<Surface>("discover");
-  const [focusedId, setFocusedId] = useState(destinations[0]?.id ?? null);
+  const [focusedId, setFocusedId] = useState<string | null>(
+    destinations[0]?.id ?? null,
+  );
+  const [viewingId, setViewingId] = useState<string | null>(null);
+  const [mapViewport, setMapViewport] = useState<MapViewport>({
+    center: BATAM_MAP_CENTER,
+    zoom: 10,
+  });
   const [split, setSplit] = useState<Split>({ desktop: 60, mobile: 45 });
   const [phoneLayout, setPhoneLayout] = useState(false);
   const shellRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
+  const discoverRegionRef = useRef<HTMLDivElement>(null);
+  const restoreRef = useRef<{
+    focusedId: string | null;
+    scrollTop: number;
+    surface: Surface;
+    mapViewport: MapViewport;
+  } | null>(null);
 
   useEffect(() => {
     const media = window.matchMedia(PHONE_QUERY);
@@ -81,10 +98,114 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       })),
     [destinations],
   );
-  const focusFromMap = useCallback((destinationId: string) => {
-    setFocusedId(destinationId);
-    setActiveSurface("discover");
+
+  const discoverViewport = useCallback(
+    () =>
+      discoverRegionRef.current?.querySelector<HTMLElement>(
+        '[data-slot="scroll-area-viewport"]',
+      ) ?? null,
+    [],
+  );
+
+  // Latest committed selection context for the stable openDetails below.
+  // Keeping these in a ref prevents a new callback identity on every
+  // selection, which previously retriggered the map marker effect.
+  // Updated in an effect so the snapshot never captures an uncommitted
+  // render or a mid-settle map position.
+  const openContextRef = useRef({
+    activeSurface,
+    destinations,
+    focusedId,
+    mapViewport,
+    viewingId,
+  });
+  useEffect(() => {
+    openContextRef.current = {
+      activeSurface,
+      destinations,
+      focusedId,
+      mapViewport,
+      viewingId,
+    };
+  }, [activeSurface, destinations, focusedId, mapViewport, viewingId]);
+
+  // Inspecting a Destination is view-only: opening details focuses the
+  // Destination and never touches Trip state.
+  // Only list selection recenters the map; map marker selection leaves
+  // the viewport untouched so clicking a point never shifts the view.
+  const openDetails = useCallback(
+    (destinationId: string, centerMap = true) => {
+      const snapshot = openContextRef.current;
+      const destination = snapshot.destinations.find(
+        ({ id }) => id === destinationId,
+      );
+      if (!destination) return;
+
+      // Snapshot the results context once per details visit so moving
+      // between Destinations via the map keeps the original context.
+      if (!snapshot.viewingId) {
+        restoreRef.current = {
+          focusedId: snapshot.focusedId,
+          scrollTop: discoverViewport()?.scrollTop ?? 0,
+          surface: snapshot.activeSurface,
+          mapViewport: snapshot.mapViewport,
+        };
+      }
+      setFocusedId(destinationId);
+      setViewingId(destinationId);
+      setActiveSurface("discover");
+      if (centerMap) {
+        setMapViewport((current) => ({
+          center: destination.coordinates,
+          zoom: current.zoom,
+        }));
+      }
+    },
+    [discoverViewport],
+  );
+
+  const openFromMap = useCallback(
+    (destinationId: string) => openDetails(destinationId, false),
+    [openDetails],
+  );
+
+  const backToResults = useCallback(() => {
+    setViewingId(null);
+    const restore = restoreRef.current;
+    if (!restore) return;
+    setFocusedId(restore.focusedId);
+    setActiveSurface(restore.surface);
+    setMapViewport(restore.mapViewport);
   }, []);
+
+  const updateMapViewport = useCallback((next: MapViewport) => {
+    setMapViewport((current) => {
+      if (
+        current.zoom === next.zoom &&
+        current.center.latitude === next.center.latitude &&
+        current.center.longitude === next.center.longitude
+      ) {
+        return current;
+      }
+      return next;
+    });
+  }, []);
+
+  // Restore the exact results position after reversible detail navigation;
+  // scroll to the top when details open.
+  useEffect(() => {
+    const viewport = discoverViewport();
+    if (!viewport) return;
+    if (viewingId) {
+      viewport.scrollTop = 0;
+    } else if (restoreRef.current) {
+      viewport.scrollTop = restoreRef.current.scrollTop;
+    }
+  }, [discoverViewport, viewingId]);
+
+  const viewingDestination = viewingId
+    ? destinations.find((destination) => destination.id === viewingId)
+    : undefined;
 
   function adjustSplit(delta: number) {
     const layout = phoneLayout ? "mobile" : "desktop";
@@ -137,7 +258,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           <ConfiguredMap
             markers={mapMarkers}
             focusedDestinationId={focusedDestination?.id ?? null}
-            onFocus={focusFromMap}
+            viewport={mapViewport}
+            onViewportChange={updateMapViewport}
+            onOpenDestination={openFromMap}
           />
         </section>
 
@@ -206,12 +329,16 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             </TabsList>
           </div>
 
-          <TabsContent className="surface-content" value="discover">
-            <DiscoverSurface
-              destinations={destinations}
-              focusedDestination={focusedDestination}
-              onFocus={setFocusedId}
-            />
+          <TabsContent className="surface-content" value="discover" keepMounted>
+            <div ref={discoverRegionRef} className="surface-scroll-region">
+              <DiscoverSurface
+                destinations={destinations}
+                focusedDestination={focusedDestination}
+                viewingDestination={viewingDestination}
+                onOpen={openDetails}
+                onBack={backToResults}
+              />
+            </div>
           </TabsContent>
           <TabsContent className="surface-content" value="trip">
             <EmptySurface
@@ -236,12 +363,29 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 function DiscoverSurface({
   destinations,
   focusedDestination,
-  onFocus,
+  viewingDestination,
+  onOpen,
+  onBack,
 }: {
   destinations: Destination[];
   focusedDestination?: Destination;
-  onFocus: (destinationId: string) => void;
+  viewingDestination?: Destination;
+  onOpen: (destinationId: string) => void;
+  onBack: () => void;
 }) {
+  if (viewingDestination) {
+    return (
+      <ScrollArea className="surface-scroll">
+        <div className="surface-layout">
+          <DestinationDetails
+            destination={viewingDestination}
+            onBack={onBack}
+          />
+        </div>
+      </ScrollArea>
+    );
+  }
+
   return (
     <ScrollArea className="surface-scroll">
       <div className="surface-layout">
@@ -285,7 +429,7 @@ function DiscoverSurface({
                     key={destination.id}
                     destination={destination}
                     isFocused={isFocused}
-                    onFocus={onFocus}
+                    onOpen={onOpen}
                   />
                 );
               })}

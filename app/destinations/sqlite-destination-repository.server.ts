@@ -14,8 +14,13 @@ import {
 import {
   categoryUsesVisitFacts,
   destinationPreviewFromDraft,
+  parseFactualTags,
   validateDestinationCandidate,
 } from "./destination-publishing";
+import {
+  describeEntryCost,
+  describeOperatingHours,
+} from "./destination-facts";
 import type {
   DestinationRepository,
   OwnerDestination,
@@ -36,6 +41,10 @@ type DestinationRow = {
   typical_visit_minutes: number;
   operating_hours_label: string;
   entry_cost_label: string;
+  address: string;
+  factual_tags: string;
+  practical_notes: string;
+  official_website_url: string;
   google_maps_url: string;
   image_url: string | null;
   image_alt_text: string | null;
@@ -55,6 +64,10 @@ type DraftRow = {
   typical_visit_minutes: number | null;
   operating_hours_label: string;
   entry_cost_label: string;
+  address: string;
+  factual_tags: string;
+  practical_notes: string;
+  official_website_url: string;
   google_maps_url: string;
   image_url: string;
   image_alt_text: string;
@@ -73,6 +86,10 @@ const EMPTY_CANDIDATE: DestinationCandidate = {
   typicalVisitMinutes: null,
   operatingHoursLabel: "",
   entryCostLabel: "",
+  address: "",
+  factualTags: "",
+  practicalNotes: "",
+  officialWebsiteUrl: "",
   googleMapsUrl: "",
   imageUrl: "",
   imageAltText: "",
@@ -91,6 +108,10 @@ function candidateFromRow(row: DraftRow): DestinationCandidate {
     typicalVisitMinutes: row.typical_visit_minutes,
     operatingHoursLabel: row.operating_hours_label,
     entryCostLabel: row.entry_cost_label,
+    address: row.address,
+    factualTags: row.factual_tags,
+    practicalNotes: row.practical_notes,
+    officialWebsiteUrl: row.official_website_url,
     googleMapsUrl: row.google_maps_url,
     imageUrl: row.image_url,
     imageAltText: row.image_alt_text,
@@ -100,6 +121,7 @@ function candidateFromRow(row: DraftRow): DestinationCandidate {
 
 function destinationFromRow(row: DestinationRow): Destination {
   const usesVisitFacts = categoryUsesVisitFacts(row.primary_category);
+  const factualTags = parseStoredFactualTags(row.factual_tags);
 
   return {
     id: row.id,
@@ -112,9 +134,15 @@ function destinationFromRow(row: DestinationRow): Destination {
     operationalStatus: row.operational_status,
     ...(usesVisitFacts && {
       typicalVisitMinutes: row.typical_visit_minutes,
-      operatingHoursLabel: row.operating_hours_label,
-      entryCostLabel: row.entry_cost_label,
+      operatingHours: describeOperatingHours(row.operating_hours_label),
+      entryCost: describeEntryCost(row.entry_cost_label),
     }),
+    ...(row.address ? { address: row.address } : {}),
+    ...(factualTags.length > 0 ? { factualTags } : {}),
+    ...(row.practical_notes ? { practicalNotes: row.practical_notes } : {}),
+    ...(row.official_website_url
+      ? { officialWebsiteUrl: row.official_website_url }
+      : {}),
     googleMapsUrl: row.google_maps_url,
     ...(row.image_url && row.image_alt_text
       ? { image: { url: row.image_url, altText: row.image_alt_text } }
@@ -133,6 +161,18 @@ function draftFromRow(
     replacesPublished,
     updatedAt: row.updated_at,
   };
+}
+
+function parseStoredFactualTags(stored: string): string[] {
+  if (!stored) return [];
+  try {
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed)
+      ? parsed.filter((tag): tag is string => typeof tag === "string")
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 function slugify(name: string) {
@@ -234,6 +274,10 @@ export class SqliteDestinationRepository implements DestinationRepository {
           typical_visit_minutes = @typicalVisitMinutes,
           operating_hours_label = @operatingHoursLabel,
           entry_cost_label = @entryCostLabel,
+          address = @address,
+          factual_tags = @factualTags,
+          practical_notes = @practicalNotes,
+          official_website_url = @officialWebsiteUrl,
           google_maps_url = @googleMapsUrl,
           image_url = @imageUrl,
           image_alt_text = @imageAltText,
@@ -280,6 +324,10 @@ export class SqliteDestinationRepository implements DestinationRepository {
           : null,
         operatingHoursLabel: published.operating_hours_label,
         entryCostLabel: published.entry_cost_label,
+        address: published.address,
+        factualTags: parseStoredFactualTags(published.factual_tags).join(", "),
+        practicalNotes: published.practical_notes,
+        officialWebsiteUrl: published.official_website_url,
         googleMapsUrl: published.google_maps_url,
         imageUrl: published.image_url ?? "",
         imageAltText: published.image_alt_text ?? "",
@@ -317,11 +365,13 @@ export class SqliteDestinationRepository implements DestinationRepository {
             id, slug, name, primary_category, area, description, latitude,
             longitude, lifecycle_status, operational_status,
             typical_visit_minutes, operating_hours_label, entry_cost_label,
+            address, factual_tags, practical_notes, official_website_url,
             google_maps_url, image_url, image_alt_text, image_rights_source
           ) VALUES (
             @id, @slug, @name, @primaryCategory, @area, @description, @latitude,
             @longitude, 'Published', @operationalStatus,
             @typicalVisitMinutes, @operatingHoursLabel, @entryCostLabel,
+            @address, @factualTags, @practicalNotes, @officialWebsiteUrl,
             @googleMapsUrl, @imageUrl, @imageAltText, @imageRightsSource
           ) ON CONFLICT(id) DO UPDATE SET
             name = excluded.name,
@@ -335,6 +385,10 @@ export class SqliteDestinationRepository implements DestinationRepository {
             typical_visit_minutes = excluded.typical_visit_minutes,
             operating_hours_label = excluded.operating_hours_label,
             entry_cost_label = excluded.entry_cost_label,
+            address = excluded.address,
+            factual_tags = excluded.factual_tags,
+            practical_notes = excluded.practical_notes,
+            official_website_url = excluded.official_website_url,
             google_maps_url = excluded.google_maps_url,
             image_url = excluded.image_url,
             image_alt_text = excluded.image_alt_text,
@@ -345,6 +399,7 @@ export class SqliteDestinationRepository implements DestinationRepository {
           id: draft.destinationId,
           slug,
           typicalVisitMinutes: candidate.typicalVisitMinutes ?? 0,
+          factualTags: JSON.stringify(parseFactualTags(candidate.factualTags)),
         });
       this.database
         .prepare("DELETE FROM destination_drafts WHERE id = ?")
@@ -370,15 +425,23 @@ export class SqliteDestinationRepository implements DestinationRepository {
         typical_visit_minutes INTEGER NOT NULL,
         operating_hours_label TEXT NOT NULL,
         entry_cost_label TEXT NOT NULL,
+        address TEXT NOT NULL DEFAULT '',
+        factual_tags TEXT NOT NULL DEFAULT '',
+        practical_notes TEXT NOT NULL DEFAULT '',
+        official_website_url TEXT NOT NULL DEFAULT '',
         google_maps_url TEXT NOT NULL,
         image_url TEXT,
         image_alt_text TEXT,
         image_rights_source TEXT
       );
     `);
-    this.addColumnIfMissing("image_url", "TEXT");
-    this.addColumnIfMissing("image_alt_text", "TEXT");
-    this.addColumnIfMissing("image_rights_source", "TEXT");
+    this.addColumnIfMissing("destinations", "image_url", "TEXT");
+    this.addColumnIfMissing("destinations", "image_alt_text", "TEXT");
+    this.addColumnIfMissing("destinations", "image_rights_source", "TEXT");
+    this.addColumnIfMissing("destinations", "address", "TEXT NOT NULL DEFAULT ''");
+    this.addColumnIfMissing("destinations", "factual_tags", "TEXT NOT NULL DEFAULT ''");
+    this.addColumnIfMissing("destinations", "practical_notes", "TEXT NOT NULL DEFAULT ''");
+    this.addColumnIfMissing("destinations", "official_website_url", "TEXT NOT NULL DEFAULT ''");
     this.database.exec(`
       CREATE TABLE IF NOT EXISTS destination_drafts (
         id TEXT PRIMARY KEY,
@@ -393,6 +456,10 @@ export class SqliteDestinationRepository implements DestinationRepository {
         typical_visit_minutes INTEGER,
         operating_hours_label TEXT NOT NULL DEFAULT '',
         entry_cost_label TEXT NOT NULL DEFAULT '',
+        address TEXT NOT NULL DEFAULT '',
+        factual_tags TEXT NOT NULL DEFAULT '',
+        practical_notes TEXT NOT NULL DEFAULT '',
+        official_website_url TEXT NOT NULL DEFAULT '',
         google_maps_url TEXT NOT NULL DEFAULT '',
         image_url TEXT NOT NULL DEFAULT '',
         image_alt_text TEXT NOT NULL DEFAULT '',
@@ -400,6 +467,10 @@ export class SqliteDestinationRepository implements DestinationRepository {
         updated_at TEXT NOT NULL
       );
     `);
+    this.addColumnIfMissing("destination_drafts", "address", "TEXT NOT NULL DEFAULT ''");
+    this.addColumnIfMissing("destination_drafts", "factual_tags", "TEXT NOT NULL DEFAULT ''");
+    this.addColumnIfMissing("destination_drafts", "practical_notes", "TEXT NOT NULL DEFAULT ''");
+    this.addColumnIfMissing("destination_drafts", "official_website_url", "TEXT NOT NULL DEFAULT ''");
 
     if (seed) {
       this.database.exec(`
@@ -407,6 +478,7 @@ export class SqliteDestinationRepository implements DestinationRepository {
           id, slug, name, primary_category, area, description, latitude,
           longitude, lifecycle_status, operational_status,
           typical_visit_minutes, operating_hours_label, entry_cost_label,
+          address, factual_tags, practical_notes, official_website_url,
           google_maps_url, image_url, image_alt_text, image_rights_source
         ) VALUES (
           'destination-barelang-bridge', 'barelang-bridge', 'Barelang Bridge',
@@ -414,6 +486,10 @@ export class SqliteDestinationRepository implements DestinationRepository {
           'An iconic Batam landmark with wide sea views and a scenic road across the islands.',
           0.9816, 104.0401, 'Published', 'Open', 60, 'Hours unknown',
           'Cost unknown',
+          'Jalan Trans Barelang, Galang, Batam',
+          '["Sea views","Photography","Road trip"]',
+          'Food stalls near the first bridge sell grilled corn and coconut. Traffic is lightest in the morning.',
+          '',
           'https://www.google.com/maps/search/?api=1&query=Barelang+Bridge+Batam',
           'https://picsum.photos/seed/barelang-bridge/800/600',
           'Barelang Bridge spanning blue water on a clear day',
@@ -424,6 +500,10 @@ export class SqliteDestinationRepository implements DestinationRepository {
           'One of the largest Chinese temples in Southeast Asia, known for its peaceful halls and statues.',
           1.1347, 104.0161, 'Published', 'Open', 60, '08:00-20:00',
           'Free',
+          'Jalan Laksamana Bintan, Sei Panas, Batam',
+          '["Temple","Quiet","Vegetarian eatery"]',
+          'Dress modestly and remove shoes before entering prayer halls. Donations are welcome but not required.',
+          '',
           'https://www.google.com/maps/search/?api=1&query=Maha+Vihara+Duta+Maitreya+Batam',
           'https://picsum.photos/seed/maha-vihara/800/600',
           'Temple hall with rows of statues in warm light',
@@ -434,6 +514,10 @@ export class SqliteDestinationRepository implements DestinationRepository {
           'A calm sandy beach in Galang with shallow water, food stalls, and shaded picnic spots.',
           0.771, 104.23, 'Published', 'Open', 120, '07:00-18:00',
           'IDR 10,000',
+          'Pantai Melur, Sijantung, Galang, Batam',
+          '["Beach","Swimming","Sunset"]',
+          'Entry is collected per vehicle at the gate. Bring small cash for stalls; card payment is uncommon.',
+          '',
           'https://www.google.com/maps/search/?api=1&query=Melur+Beach+Galang+Batam',
           'https://picsum.photos/seed/melur-beach/800/600',
           'Sandy beach with calm water and boats near the shore',
@@ -444,6 +528,10 @@ export class SqliteDestinationRepository implements DestinationRepository {
           'A waterfront amusement park with rides, a giant ferris wheel, and evening light displays.',
           1.143, 103.979, 'Published', 'Open', 180, '11:00-21:00',
           'IDR 30,000 - IDR 50,000',
+          '',
+          '["Rides","Waterfront","Evening lights"]',
+          'Ride tickets are sold separately from entry. Evenings are busiest on weekends.',
+          '',
           'https://www.google.com/maps/search/?api=1&query=Ocarina+Batam+Theme+Park',
           'https://picsum.photos/seed/ocarina-batam/800/600',
           'Ferris wheel and rides lit up at dusk by the waterfront',
@@ -454,6 +542,10 @@ export class SqliteDestinationRepository implements DestinationRepository {
           'A coastal adventure park with rope courses and sea views, currently closed for maintenance.',
           1.16, 104.04, 'Published', 'Temporarily closed', 150, 'Hours unknown',
           'IDR 50,000',
+          '',
+          '["Rope course","Sea views"]',
+          '',
+          '',
           'https://www.google.com/maps/search/?api=1&query=Sea+Forest+Adventure+Batam',
           'https://picsum.photos/seed/sea-forest/800/600',
           'Rope course platforms among coastal trees overlooking the sea',
@@ -464,6 +556,10 @@ export class SqliteDestinationRepository implements DestinationRepository {
           'A convenient hotel near the ferry terminal, useful as an overnight base for a short trip.',
           1.1305, 104.0125, 'Published', 'Open', 0, '',
           '',
+          'Jalan Engku Putri, Batam Center, Batam',
+          '',
+          '',
+          '',
           'https://www.google.com/maps/search/?api=1&query=Harris+Hotel+Batam+Center',
           NULL, NULL, NULL
         ), (
@@ -472,6 +568,10 @@ export class SqliteDestinationRepository implements DestinationRepository {
           'A busy local seafood restaurant known for chilli crab, gonggong, and large shared tables.',
           1.141, 104.002, 'Published', 'Open', 90, '11:00-23:00',
           'Free',
+          'Komplek Nagoya Business Centre, Nagoya, Batam',
+          '["Seafood","Local favourite","Groups"]',
+          'Live seafood is priced by weight; confirm the price before ordering. Expect a wait at dinner time.',
+          '',
           'https://www.google.com/maps/search/?api=1&query=Wey+Wey+Seafood+Nagoya+Batam',
           'https://picsum.photos/seed/wey-wey-seafood/800/600',
           'Shared seafood dishes served on a restaurant table',
@@ -482,6 +582,10 @@ export class SqliteDestinationRepository implements DestinationRepository {
           'A large multi-floor mall with shops, eateries, and a supermarket in central Nagoya.',
           1.1445, 104.0045, 'Published', 'Open', 120, 'No meaningful restriction',
           'Free',
+          'Jalan Teuku Umar, Nagoya, Batam',
+          '["Mall","Supermarket","Air-conditioned"]',
+          '',
+          '',
           'https://www.google.com/maps/search/?api=1&query=Nagoya+Hill+Shopping+Mall+Batam',
           'https://picsum.photos/seed/nagoya-hill/800/600',
           'Mall atrium with multiple shop floors and skylights',
@@ -491,7 +595,11 @@ export class SqliteDestinationRepository implements DestinationRepository {
           'Spa & wellness', 'Batam Center',
           'A quiet spa offering massages and reflexology, popular as an evening rest stop.',
           1.131, 104.015, 'Published', 'Open', 90, '09:00-22:00',
-          'IDR 150,000',
+          'IDR 150,000 per person',
+          '',
+          '["Massage","Reflexology"]',
+          'Reservations are recommended after 18:00, especially on weekends.',
+          '',
           'https://www.google.com/maps/search/?api=1&query=Eska+Wellness+Spa+Batam',
           'https://picsum.photos/seed/eska-spa/800/600',
           'Calm spa room with towels and soft lighting',
@@ -501,13 +609,17 @@ export class SqliteDestinationRepository implements DestinationRepository {
     }
   }
 
-  private addColumnIfMissing(name: string, declaration: string) {
+  private addColumnIfMissing(
+    table: "destinations" | "destination_drafts",
+    name: string,
+    declaration: string,
+  ) {
     const columns = this.database
-      .prepare("PRAGMA table_info(destinations)")
+      .prepare(`PRAGMA table_info(${table})`)
       .all() as Array<{ name: string }>;
     if (!columns.some((column) => column.name === name)) {
       this.database.exec(
-        `ALTER TABLE destinations ADD COLUMN ${name} ${declaration}`,
+        `ALTER TABLE ${table} ADD COLUMN ${name} ${declaration}`,
       );
     }
   }
@@ -523,12 +635,14 @@ export class SqliteDestinationRepository implements DestinationRepository {
         `INSERT INTO destination_drafts (
           id, destination_id, name, primary_category, area, description,
           latitude, longitude, operational_status, typical_visit_minutes,
-          operating_hours_label, entry_cost_label, google_maps_url, image_url,
+          operating_hours_label, entry_cost_label, address, factual_tags,
+          practical_notes, official_website_url, google_maps_url, image_url,
           image_alt_text, image_rights_source, updated_at
         ) VALUES (
           @id, @destinationId, @name, @primaryCategory, @area, @description,
           @latitude, @longitude, @operationalStatus, @typicalVisitMinutes,
-          @operatingHoursLabel, @entryCostLabel, @googleMapsUrl, @imageUrl,
+          @operatingHoursLabel, @entryCostLabel, @address, @factualTags,
+          @practicalNotes, @officialWebsiteUrl, @googleMapsUrl, @imageUrl,
           @imageAltText, @imageRightsSource, @updatedAt
         )`,
       )

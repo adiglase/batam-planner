@@ -6,8 +6,15 @@ export type MapMarker = {
   coordinates: Coordinates;
 };
 
+export type MapViewport = {
+  center: Coordinates;
+  zoom: number;
+};
+
 export type MapPresentation = {
   markers: MapMarker[];
   focusedDestinationId: string | null;
-  onFocus: (destinationId: string) => void;
+  viewport: MapViewport;
+  onViewportChange: (viewport: MapViewport) => void;
+  onOpenDestination: (destinationId: string) => void;
 };

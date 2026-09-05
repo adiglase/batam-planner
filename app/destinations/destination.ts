@@ -20,6 +20,17 @@ export type DestinationImage = {
   altText: string;
 };
 
+export type EntryCostFacts =
+  | { kind: "free"; qualification?: string }
+  | { kind: "fixed"; amountIdr: number; qualification?: string }
+  | { kind: "range"; minIdr: number; maxIdr: number; qualification?: string }
+  | { kind: "unknown"; qualification?: string };
+
+export type OperatingHoursFacts =
+  | { kind: "unknown" }
+  | { kind: "unrestricted" }
+  | { kind: "periods"; text: string };
+
 export type Destination = {
   id: string;
   slug: string;
@@ -30,8 +41,12 @@ export type Destination = {
   coordinates: Coordinates;
   operationalStatus: OperationalStatus;
   typicalVisitMinutes?: number;
-  operatingHoursLabel?: string;
-  entryCostLabel?: string;
+  operatingHours?: OperatingHoursFacts;
+  entryCost?: EntryCostFacts;
+  address?: string;
+  factualTags?: string[];
+  practicalNotes?: string;
+  officialWebsiteUrl?: string;
   googleMapsUrl: string;
   image?: DestinationImage;
 };
@@ -47,6 +62,10 @@ export type DestinationCandidate = {
   typicalVisitMinutes: number | null;
   operatingHoursLabel: string;
   entryCostLabel: string;
+  address: string;
+  factualTags: string;
+  practicalNotes: string;
+  officialWebsiteUrl: string;
   googleMapsUrl: string;
   imageUrl: string;
   imageAltText: string;
@@ -70,8 +89,12 @@ export type DestinationPreview = {
   coordinates?: Coordinates;
   operationalStatus?: OperationalStatus;
   typicalVisitMinutes?: number;
-  operatingHoursLabel?: string;
-  entryCostLabel?: string;
+  operatingHours?: OperatingHoursFacts;
+  entryCost?: EntryCostFacts;
+  address?: string;
+  factualTags?: string[];
+  practicalNotes?: string;
+  officialWebsiteUrl?: string;
   googleMapsUrl?: string;
   image?: DestinationImage;
 };

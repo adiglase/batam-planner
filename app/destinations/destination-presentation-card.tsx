@@ -2,7 +2,6 @@ import {
   ArrowUpRightIcon,
   CalendarDaysIcon,
   Clock3Icon,
-  ImageOffIcon,
   MapPinIcon,
   TicketIcon,
   TriangleAlertIcon,
@@ -24,36 +23,50 @@ import type {
   Destination,
   DestinationPreview,
 } from "~/destinations/destination";
+import {
+  entryCostText,
+  formatVisitDuration,
+  operatingHoursText,
+} from "~/destinations/destination-facts";
+import { DestinationMedia } from "~/destinations/destination-media";
 
 export function DestinationPresentationCard({
   destination,
   isFocused = false,
-  onFocus,
+  onOpen,
 }: {
   destination: Destination | DestinationPreview;
   isFocused?: boolean;
-  onFocus?: (destinationId: string) => void;
+  onOpen?: (destinationId: string) => void;
 }) {
   const hasFacts = Boolean(
-    destination.entryCostLabel ||
+    destination.entryCost ||
       destination.typicalVisitMinutes ||
-      destination.operatingHoursLabel,
+      destination.operatingHours,
   );
+  const hasWarning =
+    destination.operationalStatus === "Temporarily closed" ||
+    destination.operatingHours?.kind === "unknown";
 
   return (
     <Card>
-      <div className="destination-media">
-        {destination.image ? (
-          <img src={destination.image.url} alt={destination.image.altText} />
-        ) : (
-          <div className="destination-image-placeholder" role="img" aria-label="No image available">
-            <ImageOffIcon aria-hidden="true" />
-            <span>No image available</span>
-          </div>
-        )}
-      </div>
+      <DestinationMedia image={destination.image} />
       <CardHeader>
-        <CardTitle>{destination.name || "Untitled Destination"}</CardTitle>
+        <CardTitle>
+          {onOpen ? (
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto min-h-11 justify-start whitespace-normal px-0 py-2 text-left"
+              aria-label={`View details for ${destination.name || "Destination"}`}
+              onClick={() => onOpen(destination.id)}
+            >
+              {destination.name || "Untitled Destination"}
+            </Button>
+          ) : (
+            destination.name || "Untitled Destination"
+          )}
+        </CardTitle>
         {(destination.primaryCategory || destination.area) && (
           <CardDescription>
             {[destination.primaryCategory, destination.area]
@@ -61,29 +74,36 @@ export function DestinationPresentationCard({
               .join(" · ")}
           </CardDescription>
         )}
-        {onFocus && (
+        {onOpen && (
           <CardAction>
-            {isFocused ? (
-              <Badge variant="secondary">On map</Badge>
-            ) : (
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label={`Show ${destination.name || "Destination"} on map`}
-                onClick={() => onFocus(destination.id)}
-              >
-                <MapPinIcon data-icon="inline-start" />
-              </Button>
-            )}
+            <Button
+              variant={isFocused ? "secondary" : "outline"}
+              size="icon"
+              className="size-11"
+              aria-label={`View details for ${destination.name || "Destination"}`}
+              onClick={() => onOpen(destination.id)}
+            >
+              <MapPinIcon data-icon="inline-start" />
+            </Button>
           </CardAction>
         )}
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {destination.operationalStatus === "Temporarily closed" && (
-          <Badge variant="secondary">
-            <TriangleAlertIcon data-icon="inline-start" />
-            Temporarily closed
-          </Badge>
+        {hasWarning && (
+          <div className="flex flex-wrap gap-2">
+            {destination.operationalStatus === "Temporarily closed" && (
+              <Badge variant="secondary">
+                <TriangleAlertIcon data-icon="inline-start" />
+                Temporarily closed
+              </Badge>
+            )}
+            {destination.operatingHours?.kind === "unknown" && (
+              <Badge variant="secondary">
+                <TriangleAlertIcon data-icon="inline-start" />
+                Hours unknown
+              </Badge>
+            )}
+          </div>
         )}
         {destination.description && (
           <p className="destination-description">{destination.description}</p>
@@ -92,25 +112,25 @@ export function DestinationPresentationCard({
           <>
             <Separator />
             <dl className="destination-facts">
-              {destination.entryCostLabel && (
+              {destination.entryCost && (
                 <div>
                   <TicketIcon aria-hidden="true" />
                   <dt>Entry</dt>
-                  <dd>{destination.entryCostLabel}</dd>
+                  <dd>{entryCostText(destination.entryCost)}</dd>
                 </div>
               )}
               {destination.typicalVisitMinutes && (
                 <div>
                   <Clock3Icon aria-hidden="true" />
                   <dt>Visit</dt>
-                  <dd>{destination.typicalVisitMinutes} min</dd>
+                  <dd>{formatVisitDuration(destination.typicalVisitMinutes)}</dd>
                 </div>
               )}
-              {destination.operatingHoursLabel && (
+              {destination.operatingHours && (
                 <div>
                   <CalendarDaysIcon aria-hidden="true" />
                   <dt>Hours</dt>
-                  <dd>{destination.operatingHoursLabel}</dd>
+                  <dd>{operatingHoursText(destination.operatingHours)}</dd>
                 </div>
               )}
             </dl>

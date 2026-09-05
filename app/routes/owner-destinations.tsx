@@ -64,7 +64,7 @@ export default function OwnerDestinations({ loaderData }: Route.ComponentProps) 
         </Link>
         <Badge variant="secondary">Private owner workspace</Badge>
         <Form method="post" action="/owner/logout">
-          <Button variant="ghost" size="sm">
+          <Button type="submit" variant="ghost" size="sm">
             <LogOutIcon data-icon="inline-start" />
             Sign out
           </Button>
@@ -79,7 +79,7 @@ export default function OwnerDestinations({ loaderData }: Route.ComponentProps) 
             <p>Work on a private Draft Destination, preview the Visitor presentation, then Publish only when the content contract is complete.</p>
           </div>
           <Form method="post">
-            <Button name="intent" value="create">
+            <Button type="submit" name="intent" value="create">
               <PlusIcon data-icon="inline-start" />
               Create Draft Destination
             </Button>
@@ -140,7 +140,7 @@ export default function OwnerDestinations({ loaderData }: Route.ComponentProps) 
                     ) : (
                       <Form method="post" className="w-full">
                         <input type="hidden" name="destinationId" value={item.destinationId} />
-                        <Button className="w-full" variant="outline" name="intent" value="edit-published">
+                        <Button type="submit" className="w-full" variant="outline" name="intent" value="edit-published">
                           <FilePenLineIcon data-icon="inline-start" />
                           Edit Published Destination
                         </Button>

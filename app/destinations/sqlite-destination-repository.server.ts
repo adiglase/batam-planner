@@ -407,14 +407,95 @@ export class SqliteDestinationRepository implements DestinationRepository {
           id, slug, name, primary_category, area, description, latitude,
           longitude, lifecycle_status, operational_status,
           typical_visit_minutes, operating_hours_label, entry_cost_label,
-          google_maps_url
+          google_maps_url, image_url, image_alt_text, image_rights_source
         ) VALUES (
           'destination-barelang-bridge', 'barelang-bridge', 'Barelang Bridge',
           'Attractions & landmarks', 'Barelang',
           'An iconic Batam landmark with wide sea views and a scenic road across the islands.',
           0.9816, 104.0401, 'Published', 'Open', 60, 'Hours unknown',
           'Cost unknown',
-          'https://www.google.com/maps/search/?api=1&query=Barelang+Bridge+Batam'
+          'https://www.google.com/maps/search/?api=1&query=Barelang+Bridge+Batam',
+          'https://picsum.photos/seed/barelang-bridge/800/600',
+          'Barelang Bridge spanning blue water on a clear day',
+          'Mock development image; replace with rights-cleared photo'
+        ), (
+          'destination-maha-vihara', 'maha-vihara-duta-maitreya', 'Maha Vihara Duta Maitreya Temple',
+          'Culture & worship', 'Sei Jodoh',
+          'One of the largest Chinese temples in Southeast Asia, known for its peaceful halls and statues.',
+          1.1347, 104.0161, 'Published', 'Open', 60, '08:00-20:00',
+          'Free',
+          'https://www.google.com/maps/search/?api=1&query=Maha+Vihara+Duta+Maitreya+Batam',
+          'https://picsum.photos/seed/maha-vihara/800/600',
+          'Temple hall with rows of statues in warm light',
+          'Mock development image; replace with rights-cleared photo'
+        ), (
+          'destination-melur-beach', 'melur-beach', 'Pantai Melur',
+          'Nature & beaches', 'Galang',
+          'A calm sandy beach in Galang with shallow water, food stalls, and shaded picnic spots.',
+          0.771, 104.23, 'Published', 'Open', 120, '07:00-18:00',
+          'IDR 10,000',
+          'https://www.google.com/maps/search/?api=1&query=Melur+Beach+Galang+Batam',
+          'https://picsum.photos/seed/melur-beach/800/600',
+          'Sandy beach with calm water and boats near the shore',
+          'Mock development image; replace with rights-cleared photo'
+        ), (
+          'destination-ocarina', 'ocarina-batam', 'Ocarina Batam Theme Park',
+          'Entertainment & nightlife', 'Harbour Bay',
+          'A waterfront amusement park with rides, a giant ferris wheel, and evening light displays.',
+          1.143, 103.979, 'Published', 'Open', 180, '11:00-21:00',
+          'IDR 30,000 - IDR 50,000',
+          'https://www.google.com/maps/search/?api=1&query=Ocarina+Batam+Theme+Park',
+          'https://picsum.photos/seed/ocarina-batam/800/600',
+          'Ferris wheel and rides lit up at dusk by the waterfront',
+          'Mock development image; replace with rights-cleared photo'
+        ), (
+          'destination-sea-forest', 'sea-forest-adventure', 'Sea Forest Adventure Batam',
+          'Nature & beaches', 'Sekupang',
+          'A coastal adventure park with rope courses and sea views, currently closed for maintenance.',
+          1.16, 104.04, 'Published', 'Temporarily closed', 150, 'Hours unknown',
+          'IDR 50,000',
+          'https://www.google.com/maps/search/?api=1&query=Sea+Forest+Adventure+Batam',
+          'https://picsum.photos/seed/sea-forest/800/600',
+          'Rope course platforms among coastal trees overlooking the sea',
+          'Mock development image; replace with rights-cleared photo'
+        ), (
+          'destination-harris-batam-center', 'harris-hotel-batam-center', 'Harris Hotel Batam Center',
+          'Accommodation', 'Batam Center',
+          'A convenient hotel near the ferry terminal, useful as an overnight base for a short trip.',
+          1.1305, 104.0125, 'Published', 'Open', 0, '',
+          '',
+          'https://www.google.com/maps/search/?api=1&query=Harris+Hotel+Batam+Center',
+          NULL, NULL, NULL
+        ), (
+          'destination-wey-wey-seafood', 'wey-wey-seafood', 'Wey Wey Seafood Nagoya',
+          'Food & drink', 'Nagoya',
+          'A busy local seafood restaurant known for chilli crab, gonggong, and large shared tables.',
+          1.141, 104.002, 'Published', 'Open', 90, '11:00-23:00',
+          'Free',
+          'https://www.google.com/maps/search/?api=1&query=Wey+Wey+Seafood+Nagoya+Batam',
+          'https://picsum.photos/seed/wey-wey-seafood/800/600',
+          'Shared seafood dishes served on a restaurant table',
+          'Mock development image; replace with rights-cleared photo'
+        ), (
+          'destination-nagoya-hill', 'nagoya-hill-mall', 'Nagoya Hill Shopping Mall',
+          'Shopping', 'Nagoya',
+          'A large multi-floor mall with shops, eateries, and a supermarket in central Nagoya.',
+          1.1445, 104.0045, 'Published', 'Open', 120, 'No meaningful restriction',
+          'Free',
+          'https://www.google.com/maps/search/?api=1&query=Nagoya+Hill+Shopping+Mall+Batam',
+          'https://picsum.photos/seed/nagoya-hill/800/600',
+          'Mall atrium with multiple shop floors and skylights',
+          'Mock development image; replace with rights-cleared photo'
+        ), (
+          'destination-eska-spa', 'eska-wellness-spa', 'Eska Wellness Spa',
+          'Spa & wellness', 'Batam Center',
+          'A quiet spa offering massages and reflexology, popular as an evening rest stop.',
+          1.131, 104.015, 'Published', 'Open', 90, '09:00-22:00',
+          'IDR 150,000',
+          'https://www.google.com/maps/search/?api=1&query=Eska+Wellness+Spa+Batam',
+          'https://picsum.photos/seed/eska-spa/800/600',
+          'Calm spa room with towels and soft lighting',
+          'Mock development image; replace with rights-cleared photo'
         );
       `);
     }

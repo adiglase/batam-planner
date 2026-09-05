@@ -2,7 +2,8 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
 
 export default [
   index("routes/home.tsx"),
-  route("owner/login", "routes/owner-login.ts"),
+  route("api/auth/*", "routes/auth-api.ts"),
+  route("owner/login", "routes/owner-login.tsx"),
   route("owner/callback", "routes/owner-callback.ts"),
   route("owner/logout", "routes/owner-logout.ts"),
   route("owner/destinations", "routes/owner-destinations.tsx"),

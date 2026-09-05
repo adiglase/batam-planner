@@ -1,170 +1,37 @@
-import * as oidc from "openid-client";
-import { createCookieSessionStorage, redirect } from "react-router";
+import { redirect } from "react-router";
+import { AuthNotConfigured, getOwnerAuth, type OwnerAuthRuntime } from "./better-auth.server.ts";
 
-type OwnerSessionData = {
-  ownerSubject?: string;
-  codeVerifier?: string;
-  state?: string;
-  nonce?: string;
-};
-
-type OwnerAuthConfig = {
-  issuer: URL;
-  clientId: string;
-  clientSecret: string;
-  redirectUri: string;
-  ownerSubject: string;
-  sessionSecret: string;
-};
-
-function requiredEnvironmentValue(name: string) {
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`${name} must be configured`);
-  return value;
-}
-
-function getOwnerAuthConfig(): OwnerAuthConfig {
-  const sessionSecret = requiredEnvironmentValue("OWNER_SESSION_SECRET");
-  if (sessionSecret.length < 32) {
-    throw new Error("OWNER_SESSION_SECRET must contain at least 32 characters");
+function requireSameOrigin(request: Request, origin: string) {
+  if (!["GET", "HEAD"].includes(request.method) && request.headers.get("Origin") !== origin) {
+    throw new Response("Owner action requires the application origin.", { status: 403 });
   }
-
-  return {
-    issuer: new URL(requiredEnvironmentValue("OWNER_OIDC_ISSUER")),
-    clientId: requiredEnvironmentValue("OWNER_OIDC_CLIENT_ID"),
-    clientSecret: requiredEnvironmentValue("OWNER_OIDC_CLIENT_SECRET"),
-    redirectUri: requiredEnvironmentValue("OWNER_OIDC_REDIRECT_URI"),
-    ownerSubject: requiredEnvironmentValue("OWNER_OIDC_SUBJECT"),
-    sessionSecret,
-  };
 }
 
-function sessionStorage(config: OwnerAuthConfig) {
-  return createCookieSessionStorage<OwnerSessionData>({
-    cookie: {
-      name:
-        process.env.NODE_ENV === "production"
-          ? "__Host-batam_owner"
-          : "batam_owner",
-      httpOnly: true,
-      maxAge: 60 * 60 * 8,
-      path: "/",
-      sameSite: "lax",
-      secrets: [config.sessionSecret],
-      secure: process.env.NODE_ENV === "production",
-    },
-  });
-}
-
-let cachedClient:
-  | { key: string; value: Promise<oidc.Configuration> }
-  | undefined;
-
-function getOidcClient(config: OwnerAuthConfig) {
-  const key = `${config.issuer.href}|${config.clientId}`;
-  if (cachedClient?.key !== key) {
-    cachedClient = {
-      key,
-      value: oidc.discovery(
-        config.issuer,
-        config.clientId,
-        config.clientSecret,
-      ),
-    };
-  }
-  return cachedClient.value;
-}
-
-export function isConfiguredOwner(
-  authenticatedSubject: string | undefined,
-  configuredSubject: string,
-) {
-  return Boolean(
-    authenticatedSubject && authenticatedSubject === configuredSubject,
-  );
-}
-
-export async function requireOwner(request: Request) {
-  const config = getOwnerAuthConfig();
-  const storage = sessionStorage(config);
-  const session = await storage.getSession(request.headers.get("Cookie"));
-  if (!isConfiguredOwner(session.get("ownerSubject"), config.ownerSubject)) {
+export async function requireOwner(request: Request, runtime?: OwnerAuthRuntime) {
+  let ownerAuth: OwnerAuthRuntime;
+  try { ownerAuth = runtime ?? getOwnerAuth(); }
+  catch (error) {
+    if (!(error instanceof AuthNotConfigured)) throw error;
     throw redirect("/owner/login");
   }
-  return config.ownerSubject;
-}
-
-export async function beginOwnerLogin(request: Request) {
-  const config = getOwnerAuthConfig();
-  const client = await getOidcClient(config);
-  const storage = sessionStorage(config);
-  const session = await storage.getSession(request.headers.get("Cookie"));
-  const codeVerifier = oidc.randomPKCECodeVerifier();
-  const codeChallenge = await oidc.calculatePKCECodeChallenge(codeVerifier);
-  const state = oidc.randomState();
-  const nonce = oidc.randomNonce();
-
-  session.set("codeVerifier", codeVerifier);
-  session.set("state", state);
-  session.set("nonce", nonce);
-
-  const authorizationUrl = oidc.buildAuthorizationUrl(client, {
-    redirect_uri: config.redirectUri,
-    scope: "openid",
-    code_challenge: codeChallenge,
-    code_challenge_method: "S256",
-    state,
-    nonce,
-  });
-
-  return redirect(authorizationUrl.href, {
-    headers: { "Set-Cookie": await storage.commitSession(session) },
-  });
-}
-
-export async function completeOwnerLogin(request: Request) {
-  const config = getOwnerAuthConfig();
-  const client = await getOidcClient(config);
-  const storage = sessionStorage(config);
-  const session = await storage.getSession(request.headers.get("Cookie"));
-  const codeVerifier = session.get("codeVerifier");
-  const state = session.get("state");
-  const nonce = session.get("nonce");
-  if (!codeVerifier || !state || !nonce) {
-    throw new Response("The owner sign-in attempt has expired.", { status: 400 });
+  const session = await ownerAuth.auth.api.getSession({ headers: request.headers });
+  if (!session) throw redirect("/owner/login");
+  if (!ownerAuth.policy.isOwner(session.user.id)) {
+    throw new Response("This Google account isn't authorized to manage Destinations.", { status: 403 });
   }
-
-  const tokens = await oidc.authorizationCodeGrant(
-    client,
-    new URL(request.url),
-    {
-      pkceCodeVerifier: codeVerifier,
-      expectedState: state,
-      expectedNonce: nonce,
-      idTokenExpected: true,
-    },
-  );
-  const subject = tokens.claims()?.sub;
-  if (!isConfiguredOwner(subject, config.ownerSubject)) {
-    throw new Response("This identity is not the configured owner.", {
-      status: 403,
-    });
-  }
-
-  session.unset("codeVerifier");
-  session.unset("state");
-  session.unset("nonce");
-  session.set("ownerSubject", subject);
-  return redirect("/owner/destinations", {
-    headers: { "Set-Cookie": await storage.commitSession(session) },
-  });
+  requireSameOrigin(request, ownerAuth.config.baseURL);
+  return session.user.id;
 }
 
-export async function endOwnerSession(request: Request) {
-  const config = getOwnerAuthConfig();
-  const storage = sessionStorage(config);
-  const session = await storage.getSession(request.headers.get("Cookie"));
-  return redirect("/", {
-    headers: { "Set-Cookie": await storage.destroySession(session) },
-  });
+export async function endOwnerSession(request: Request, runtime = getOwnerAuth()) {
+  requireSameOrigin(request, runtime.config.baseURL);
+  const headers = new Headers(request.headers);
+  headers.set("Content-Type", "application/json");
+  const response = await runtime.auth.handler(new Request(`${runtime.config.baseURL}/api/auth/sign-out`, {
+    method: "POST", headers, body: "{}",
+  }));
+  if (!response.ok) return response;
+  const resultHeaders = new Headers({ "Cache-Control": "no-store" });
+  for (const cookie of response.headers.getSetCookie()) resultHeaders.append("Set-Cookie", cookie);
+  return redirect("/", { headers: resultHeaders });
 }

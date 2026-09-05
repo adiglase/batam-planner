@@ -1,6 +1,6 @@
-import type { Route } from "./+types/owner-callback";
-import { completeOwnerLogin } from "~/auth/owner-auth.server";
+import { redirect } from "react-router";
 
-export function loader({ request }: Route.LoaderArgs) {
-  return completeOwnerLogin(request);
+// The previous OIDC callback must never process an authorization code.
+export function loader() {
+  return redirect("/owner/login");
 }

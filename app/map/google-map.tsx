@@ -1,9 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { MapPresentation, MapViewport } from "./map-provider";
+import { CLUSTER_MAX_ZOOM, clusterMarkers, isClusterActive } from "~/discovery/discovery";
+import type { DestinationCluster } from "~/discovery/discovery";
+import type { MapBounds, MapPresentation, MapViewport } from "./map-provider";
 
 type GoogleMapInstance = {
   addListener(event: "idle", listener: () => void): { remove(): void };
+  getBounds():
+    | {
+        getNorthEast(): { lat(): number; lng(): number };
+        getSouthWest(): { lat(): number; lng(): number };
+      }
+    | undefined;
   getCenter(): { lat(): number; lng(): number } | undefined;
   getZoom(): number | undefined;
   setCenter(position: { lat: number; lng: number }): void;
@@ -11,7 +19,7 @@ type GoogleMapInstance = {
 };
 type GoogleMarkerInstance = {
   addListener(
-    event: "click",
+    event: "click" | "mouseover",
     listener: () => void,
   ): { remove?(): void } | undefined;
   setIcon(icon: string): void;
@@ -80,6 +88,12 @@ function markerIconUrl(selected: boolean) {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
+function clusterIconUrl(count: number, active: boolean) {
+  const label = count > 99 ? "99+" : String(count);
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='52' height='52' viewBox='0 0 52 52'><circle cx='26' cy='26' r='22' fill='${active ? MARKER_RING : MARKER_FILL}' stroke='white' stroke-width='3'/><text x='26' y='32' text-anchor='middle' font-family='sans-serif' font-size='16' font-weight='700' fill='white'>${label}</text></svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
 function applyMarkerEmphasis(
   instance: GoogleMarkerInstance,
   selected: boolean,
@@ -132,9 +146,11 @@ export function GoogleMap({
   viewport,
   onViewportChange,
   onOpenDestination,
+  onFocusDestination,
 }: MapPresentation & { apiKey: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [unavailable, setUnavailable] = useState(false);
+  const [chooser, setChooser] = useState<DestinationCluster | null>(null);
   const [mapState, setMapState] = useState<{
     maps: GoogleMapsApi;
     map: GoogleMapInstance;
@@ -144,6 +160,14 @@ export function GoogleMap({
   useEffect(() => {
     openDestinationRef.current = onOpenDestination;
   }, [onOpenDestination]);
+  const focusDestinationRef = useRef(onFocusDestination);
+  useEffect(() => {
+    focusDestinationRef.current = onFocusDestination;
+  }, [onFocusDestination]);
+  const viewportChangeRef = useRef(onViewportChange);
+  useEffect(() => {
+    viewportChangeRef.current = onViewportChange;
+  }, [onViewportChange]);
   const focusedIdRef = useRef(focusedDestinationId);
   useEffect(() => {
     focusedIdRef.current = focusedDestinationId;
@@ -156,6 +180,23 @@ export function GoogleMap({
   useEffect(() => {
     viewportRef.current = viewport;
   }, [viewport]);
+
+  const clusters = useMemo(
+    () => clusterMarkers(markers, viewport.zoom),
+    [markers, viewport.zoom],
+  );
+  const markerById = useMemo(
+    () => new Map(markers.map((marker) => [marker.id, marker])),
+    [markers],
+  );
+
+  // A chooser for Destinations that left the filtered collection closes
+  // itself so the map never offers an unopenable choice.
+  useEffect(() => {
+    if (!chooser) return;
+    const stillPresent = chooser.memberIds.every((id) => markerById.has(id));
+    if (!stillPresent) setChooser(null);
+  }, [chooser, markerById]);
 
   useEffect(() => {
     let active = true;
@@ -179,10 +220,29 @@ export function GoogleMap({
           const center = map.getCenter();
           const zoom = map.getZoom();
           if (!center || zoom === undefined) return;
-          onViewportChange({
-            center: { latitude: center.lat(), longitude: center.lng() },
-            zoom,
-          });
+          let bounds: MapBounds | null = null;
+          try {
+            const raw = map.getBounds();
+            if (raw) {
+              const northEast = raw.getNorthEast();
+              const southWest = raw.getSouthWest();
+              bounds = {
+                north: northEast.lat(),
+                south: southWest.lat(),
+                east: northEast.lng(),
+                west: southWest.lng(),
+              };
+            }
+          } catch {
+            bounds = null;
+          }
+          viewportChangeRef.current(
+            {
+              center: { latitude: center.lat(), longitude: center.lng() },
+              zoom,
+            },
+            bounds,
+          );
         });
         setMapState({ maps, map });
       })
@@ -194,47 +254,111 @@ export function GoogleMap({
       active = false;
       idleListener?.remove();
     };
-  }, [apiKey, onViewportChange]);
+  }, [apiKey]);
 
   useEffect(() => {
     if (!mapState) return;
 
-    const markerInstances = markers.map((marker) => {
-      const selected = marker.id === focusedIdRef.current;
+    const created: Array<{
+      instance: GoogleMarkerInstance;
+      listeners: Array<{ remove?(): void } | undefined>;
+    }> = [];
+    const byKey = new Map<string, GoogleMarkerInstance>();
+
+    for (const cluster of clusters) {
+      if (cluster.count === 1) {
+        const marker = markerById.get(cluster.memberIds[0]);
+        if (!marker) continue;
+        const selected = marker.id === focusedIdRef.current;
+        const instance = new mapState.maps.Marker({
+          map: mapState.map,
+          position: {
+            lat: marker.coordinates.latitude,
+            lng: marker.coordinates.longitude,
+          },
+          title: marker.label,
+          icon: markerIconUrl(selected),
+          opacity: 1,
+          zIndex: selected ? 100 : 10,
+        });
+        const clickListener = instance.addListener("click", () =>
+          openDestinationRef.current(marker.id),
+        );
+        const hoverListener = instance.addListener("mouseover", () =>
+          focusDestinationRef.current?.(marker.id),
+        );
+        created.push({ instance, listeners: [clickListener, hoverListener] });
+        byKey.set(`marker:${marker.id}`, instance);
+        continue;
+      }
+
+      const containsFocus = isClusterActive(cluster, focusedIdRef.current);
       const instance = new mapState.maps.Marker({
         map: mapState.map,
         position: {
-          lat: marker.coordinates.latitude,
-          lng: marker.coordinates.longitude,
+          lat: cluster.coordinates.latitude,
+          lng: cluster.coordinates.longitude,
         },
-        title: marker.label,
-        icon: markerIconUrl(selected),
+        title: `${cluster.count} Destinations`,
+        icon: clusterIconUrl(cluster.count, containsFocus),
         opacity: 1,
-        zIndex: selected ? 100 : 10,
+        zIndex: containsFocus ? 90 : 50,
       });
-      const listener = instance.addListener("click", () =>
-        openDestinationRef.current(marker.id),
-      );
-      return { markerId: marker.id, instance, listener };
-    });
-    markerInstancesRef.current = new Map(
-      markerInstances.map(({ markerId, instance }) => [markerId, instance]),
-    );
+      const clickListener = instance.addListener("click", () => {
+        // Shared coordinates cannot be disambiguated by zooming, so offer
+        // an explicit chooser. Wider clusters zoom toward their members.
+        if (cluster.sharedCoordinates) {
+          setChooser(cluster);
+          return;
+        }
+        const currentZoom = mapState.map.getZoom() ?? viewportRef.current.zoom;
+        const nextZoom = Math.min(currentZoom + 2, CLUSTER_MAX_ZOOM);
+        if (nextZoom === currentZoom) {
+          setChooser(cluster);
+          return;
+        }
+        mapState.map.setCenter({
+          lat: cluster.coordinates.latitude,
+          lng: cluster.coordinates.longitude,
+        });
+        mapState.map.setZoom(nextZoom);
+      });
+      created.push({ instance, listeners: [clickListener] });
+      byKey.set(`cluster:${cluster.id}`, instance);
+    }
+    markerInstancesRef.current = byKey;
 
     return () => {
-      markerInstances.forEach(({ instance, listener }) => {
-        listener?.remove?.();
+      created.forEach(({ instance, listeners }) => {
+        listeners.forEach((listener) => listener?.remove?.());
         instance.setMap(null);
       });
       markerInstancesRef.current.clear();
     };
-  }, [mapState, markers]);
+  }, [mapState, clusters, markerById]);
 
+  // Re-apply emphasis for both singleton markers and cluster icons when
+  // focus moves. Cluster instances are updated in place so list
+  // hover/keyboard focus stays synchronized without recreating markers
+  // (which would replay #15's marker-effect retrigger problem).
   useEffect(() => {
-    markerInstancesRef.current.forEach((instance, markerId) => {
-      applyMarkerEmphasis(instance, markerId === focusedDestinationId);
+    markerInstancesRef.current.forEach((instance, key) => {
+      if (key.startsWith("marker:")) {
+        const markerId = key.slice("marker:".length);
+        applyMarkerEmphasis(instance, markerId === focusedDestinationId);
+        return;
+      }
+      if (key.startsWith("cluster:")) {
+        const clusterId = key.slice("cluster:".length);
+        const cluster = clusters.find((entry) => entry.id === clusterId);
+        if (!cluster) return;
+        const active = isClusterActive(cluster, focusedDestinationId);
+        instance.setIcon(clusterIconUrl(cluster.count, active));
+        instance.setZIndex(active ? 90 : 50);
+        instance.setOpacity(1);
+      }
     });
-  }, [focusedDestinationId]);
+  }, [focusedDestinationId, clusters]);
 
   // Drive the map only when it actually drifted from the desired viewport.
   // The previous unconditional setCenter/setZoom re-drove the map on every
@@ -266,6 +390,15 @@ export function GoogleMap({
     }
   }, [mapState, viewport]);
 
+  useEffect(() => {
+    if (!chooser) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setChooser(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [chooser]);
+
   if (unavailable) {
     return (
       <div className="map-unavailable" role="status">
@@ -279,7 +412,50 @@ export function GoogleMap({
 
   return (
     <div className="google-map-shell">
-      <div ref={containerRef} className="google-map" />
+      <div ref={containerRef} className="google-map" role="application" aria-label="Batam Destination map" />
+      {chooser ? (
+        <div
+          className="map-chooser"
+          role="dialog"
+          aria-modal="false"
+          aria-label={
+            chooser.sharedCoordinates
+              ? `${chooser.count} Destinations share this point`
+              : `${chooser.count} Destinations close together`
+          }
+        >
+          <div className="map-chooser-card">
+            <strong>
+              {chooser.sharedCoordinates
+                ? `${chooser.count} Destinations share this point`
+                : `${chooser.count} Destinations close together`}
+            </strong>
+            <span>
+              {chooser.sharedCoordinates
+                ? "Zooming cannot separate them. Choose one to inspect."
+                : "They still overlap at this zoom. Choose one to inspect."}
+            </span>
+            <ul>
+              {chooser.memberIds.map((memberId) => (
+                <li key={memberId}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      openDestinationRef.current(memberId);
+                      setChooser(null);
+                    }}
+                  >
+                    {markerById.get(memberId)?.label ?? memberId}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button type="button" onClick={() => setChooser(null)}>
+              Close chooser
+            </button>
+          </div>
+        </div>
+      ) : null}
       <div className="map-caption" aria-live="polite">
         <strong>
           {focusedMarker?.label ?? "Explore Batam"}

@@ -3,17 +3,51 @@ import type { CSSProperties } from "react";
 import {
   CalendarDaysIcon,
   CompassIcon,
+  ListFilterIcon,
   LuggageIcon,
+  MapPinIcon,
+  RotateCcwIcon,
+  SearchIcon,
+  XIcon,
 } from "lucide-react";
 import { Link } from "react-router";
 
 import { Badge } from "~/components/ui/badge";
+import { Button } from "~/components/ui/button";
+import { Checkbox } from "~/components/ui/checkbox";
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "~/components/ui/drawer";
 import {
   Empty,
+  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyTitle,
 } from "~/components/ui/empty";
+import { Input } from "~/components/ui/input";
+import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "~/components/ui/field";
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "~/components/ui/popover";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import {
   Tabs,
@@ -23,9 +57,19 @@ import {
 } from "~/components/ui/tabs";
 import type { Route } from "./+types/home";
 import type { Destination } from "~/destinations/destination";
+import { DESTINATION_CATEGORIES } from "~/destinations/destination";
 import { DestinationDetails } from "~/destinations/destination-details";
 import { DestinationPresentationCard } from "~/destinations/destination-presentation-card";
 import { getDestinationRepository } from "~/destinations/sqlite-destination-repository.server";
+import {
+  filterPublishedDestinations,
+  viewportBoundsFromCenterZoom,
+} from "~/discovery/discovery";
+import type { MapBounds } from "~/discovery/discovery";
+import {
+  loadDiscoverySession,
+  saveDiscoverySession,
+} from "~/discovery/discovery-session";
 import { BATAM_MAP_CENTER } from "~/geography/coordinates";
 import { ConfiguredMap } from "~/map/configured-map";
 import type { MapViewport } from "~/map/map-provider";
@@ -55,6 +99,17 @@ function clampRegionShare(value: number) {
   return Math.min(MAX_REGION_SHARE, Math.max(MIN_REGION_SHARE, value));
 }
 
+type RestoreSnapshot = {
+  focusedId: string | null;
+  scrollTop: number;
+  surface: Surface;
+  mapViewport: MapViewport;
+  search: string;
+  categories: string[];
+  areas: string[];
+  appliedBounds: MapBounds | null;
+};
+
 export default function Home({ loaderData }: Route.ComponentProps) {
   const { destinations } = loaderData;
   const [activeSurface, setActiveSurface] = useState<Surface>("discover");
@@ -62,21 +117,22 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     destinations[0]?.id ?? null,
   );
   const [viewingId, setViewingId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
+  const [appliedBounds, setAppliedBounds] = useState<MapBounds | null>(null);
+  const [visibleBounds, setVisibleBounds] = useState<MapBounds | null>(null);
   const [mapViewport, setMapViewport] = useState<MapViewport>({
     center: BATAM_MAP_CENTER,
     zoom: 10,
   });
   const [split, setSplit] = useState<Split>({ desktop: 60, mobile: 45 });
   const [phoneLayout, setPhoneLayout] = useState(false);
+  const [sessionRestored, setSessionRestored] = useState(false);
   const shellRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
   const discoverRegionRef = useRef<HTMLDivElement>(null);
-  const restoreRef = useRef<{
-    focusedId: string | null;
-    scrollTop: number;
-    surface: Surface;
-    mapViewport: MapViewport;
-  } | null>(null);
+  const restoreRef = useRef<RestoreSnapshot | null>(null);
 
   useEffect(() => {
     const media = window.matchMedia(PHONE_QUERY);
@@ -86,17 +142,95 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     return () => media.removeEventListener("change", updateLayout);
   }, []);
 
+  // Session-only discovery persistence. Trip data lives separately in
+  // localStorage; this sessionStorage envelope starts neutral in a later
+  // session. Loading in an effect avoids SSR hydration mismatches.
+  useEffect(() => {
+    const saved = loadDiscoverySession();
+    if (saved.search) setSearch(saved.search);
+    if (saved.categories.length > 0) setSelectedCategories(saved.categories);
+    if (saved.areas.length > 0) setSelectedAreas(saved.areas);
+    if (saved.appliedBounds) setAppliedBounds(saved.appliedBounds);
+    if (
+      saved.focusedId &&
+      destinations.some(({ id }) => id === saved.focusedId)
+    ) {
+      setFocusedId(saved.focusedId);
+    }
+    if (saved.mapViewport) setMapViewport(saved.mapViewport);
+    setActiveSurface(saved.surface);
+    setSessionRestored(true);
+  }, [destinations]);
+
+  useEffect(() => {
+    if (!sessionRestored) return;
+    saveDiscoverySession({
+      search,
+      categories: selectedCategories,
+      areas: selectedAreas,
+      appliedBounds,
+      focusedId,
+      mapViewport,
+      surface: activeSurface,
+    });
+  }, [
+    sessionRestored,
+    search,
+    selectedCategories,
+    selectedAreas,
+    appliedBounds,
+    focusedId,
+    mapViewport,
+    activeSurface,
+  ]);
+
+  const availableCategories = useMemo(() => {
+    const present = new Set(destinations.map(({ primaryCategory }) => primaryCategory));
+    return DESTINATION_CATEGORIES.filter((category) => present.has(category));
+  }, [destinations]);
+  const availableAreas = useMemo(
+    () =>
+      [...new Set(destinations.map(({ area }) => area).filter(Boolean))].sort(
+        (left, right) => left.localeCompare(right, "en", { sensitivity: "base" }),
+      ),
+    [destinations],
+  );
+
+  // Search and filters operate on the full matching Published collection,
+  // independent of the viewport. The viewport scope applies only when the
+  // Visitor explicitly requests "Search this area".
+  const baseFiltered = useMemo(
+    () =>
+      filterPublishedDestinations(destinations, {
+        search,
+        categories: selectedCategories,
+        areas: selectedAreas,
+        viewportBounds: null,
+      }),
+    [destinations, search, selectedCategories, selectedAreas],
+  );
+  const results = useMemo(
+    () =>
+      filterPublishedDestinations(destinations, {
+        search,
+        categories: selectedCategories,
+        areas: selectedAreas,
+        viewportBounds: appliedBounds,
+      }),
+    [destinations, search, selectedCategories, selectedAreas, appliedBounds],
+  );
+
   const focusedDestination =
-    destinations.find((destination) => destination.id === focusedId) ??
-    destinations[0];
+    results.find((destination) => destination.id === focusedId) ??
+    results[0];
   const mapMarkers = useMemo(
     () =>
-      destinations.map((destination) => ({
+      results.map((destination) => ({
         id: destination.id,
         label: destination.name,
         coordinates: destination.coordinates,
       })),
-    [destinations],
+    [results],
   );
 
   const discoverViewport = useCallback(
@@ -118,6 +252,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     focusedId,
     mapViewport,
     viewingId,
+    search,
+    selectedCategories,
+    selectedAreas,
+    appliedBounds,
   });
   useEffect(() => {
     openContextRef.current = {
@@ -126,8 +264,22 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       focusedId,
       mapViewport,
       viewingId,
+      search,
+      selectedCategories,
+      selectedAreas,
+      appliedBounds,
     };
-  }, [activeSurface, destinations, focusedId, mapViewport, viewingId]);
+  }, [
+    activeSurface,
+    destinations,
+    focusedId,
+    mapViewport,
+    viewingId,
+    search,
+    selectedCategories,
+    selectedAreas,
+    appliedBounds,
+  ]);
 
   // Inspecting a Destination is view-only: opening details focuses the
   // Destination and never touches Trip state.
@@ -149,6 +301,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           scrollTop: discoverViewport()?.scrollTop ?? 0,
           surface: snapshot.activeSurface,
           mapViewport: snapshot.mapViewport,
+          search: snapshot.search,
+          categories: snapshot.selectedCategories,
+          areas: snapshot.selectedAreas,
+          appliedBounds: snapshot.appliedBounds,
         };
       }
       setFocusedId(destinationId);
@@ -169,6 +325,18 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     [openDetails],
   );
 
+  // Hovering or keyboard-focusing a result highlights its marker without
+  // opening details, keeping map, list, and focus synchronized.
+  const focusDestination = useCallback(
+    (destinationId: string) => {
+      if (!destinations.some(({ id }) => id === destinationId)) return;
+      setFocusedId((current) =>
+        current === destinationId ? current : destinationId,
+      );
+    },
+    [destinations],
+  );
+
   const backToResults = useCallback(() => {
     setViewingId(null);
     const restore = restoreRef.current;
@@ -176,20 +344,52 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     setFocusedId(restore.focusedId);
     setActiveSurface(restore.surface);
     setMapViewport(restore.mapViewport);
+    setSearch(restore.search);
+    setSelectedCategories(restore.categories);
+    setSelectedAreas(restore.areas);
+    setAppliedBounds(restore.appliedBounds);
   }, []);
 
-  const updateMapViewport = useCallback((next: MapViewport) => {
-    setMapViewport((current) => {
-      if (
-        current.zoom === next.zoom &&
-        current.center.latitude === next.center.latitude &&
-        current.center.longitude === next.center.longitude
-      ) {
-        return current;
-      }
-      return next;
-    });
+  const updateMapViewport = useCallback(
+    (next: MapViewport, bounds: MapBounds | null) => {
+      setMapViewport((current) => {
+        if (
+          current.zoom === next.zoom &&
+          current.center.latitude === next.center.latitude &&
+          current.center.longitude === next.center.longitude
+        ) {
+          return current;
+        }
+        return next;
+      });
+      // Map movement alone never changes results; it only refreshes the
+      // bounds offered to an explicit "Search this area" request.
+      setVisibleBounds(
+        bounds ?? viewportBoundsFromCenterZoom(next.center, next.zoom),
+      );
+    },
+    [],
+  );
+
+  const searchThisArea = useCallback(() => {
+    if (visibleBounds) setAppliedBounds({ ...visibleBounds });
+  }, [visibleBounds]);
+
+  const showAllDestinations = useCallback(() => {
+    setAppliedBounds(null);
   }, []);
+
+  const clearSearchAndFilters = useCallback(() => {
+    setSearch("");
+    setSelectedCategories([]);
+    setSelectedAreas([]);
+  }, []);
+
+  function toggleSelection(current: string[], value: string) {
+    return current.includes(value)
+      ? current.filter((item) => item !== value)
+      : [...current, value];
+  }
 
   // Restore the exact results position after reversible detail navigation;
   // scroll to the top when details open.
@@ -259,9 +459,39 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             markers={mapMarkers}
             focusedDestinationId={focusedDestination?.id ?? null}
             viewport={mapViewport}
+            visibleBounds={visibleBounds}
             onViewportChange={updateMapViewport}
             onOpenDestination={openFromMap}
+            onFocusDestination={focusDestination}
           />
+          <div className="map-search-control">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={!visibleBounds}
+              onClick={searchThisArea}
+              title={
+                visibleBounds
+                  ? "Limit results to the Destinations currently visible on the map"
+                  : "Move the map to define a searchable area"
+              }
+            >
+              <SearchIcon data-icon="inline-start" />
+              Search this area
+            </Button>
+            {appliedBounds && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={showAllDestinations}
+              >
+                <RotateCcwIcon data-icon="inline-start" />
+                All Batam
+              </Button>
+            )}
+          </div>
         </section>
 
         <div
@@ -333,9 +563,30 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             <div ref={discoverRegionRef} className="surface-scroll-region">
               <DiscoverSurface
                 destinations={destinations}
+                results={results}
+                baseCount={baseFiltered.length}
                 focusedDestination={focusedDestination}
                 viewingDestination={viewingDestination}
+                search={search}
+                onSearchChange={setSearch}
+                availableCategories={availableCategories}
+                selectedCategories={selectedCategories}
+                onToggleCategory={(category) =>
+                  setSelectedCategories((current) =>
+                    toggleSelection(current, category),
+                  )
+                }
+                availableAreas={availableAreas}
+                selectedAreas={selectedAreas}
+                onToggleArea={(area) =>
+                  setSelectedAreas((current) => toggleSelection(current, area))
+                }
+                viewportScoped={appliedBounds !== null}
+                phoneLayout={phoneLayout}
+                onShowAll={showAllDestinations}
+                onClearFilters={clearSearchAndFilters}
                 onOpen={openDetails}
+                onFocus={focusDestination}
                 onBack={backToResults}
               />
             </div>
@@ -362,15 +613,45 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
 function DiscoverSurface({
   destinations,
+  results,
+  baseCount,
   focusedDestination,
   viewingDestination,
+  search,
+  onSearchChange,
+  availableCategories,
+  selectedCategories,
+  onToggleCategory,
+  availableAreas,
+  selectedAreas,
+  onToggleArea,
+  viewportScoped,
+  phoneLayout,
+  onShowAll,
+  onClearFilters,
   onOpen,
+  onFocus,
   onBack,
 }: {
   destinations: Destination[];
+  results: Destination[];
+  baseCount: number;
   focusedDestination?: Destination;
   viewingDestination?: Destination;
+  search: string;
+  onSearchChange: (value: string) => void;
+  availableCategories: string[];
+  selectedCategories: string[];
+  onToggleCategory: (category: string) => void;
+  availableAreas: string[];
+  selectedAreas: string[];
+  onToggleArea: (area: string) => void;
+  viewportScoped: boolean;
+  phoneLayout: boolean;
+  onShowAll: () => void;
+  onClearFilters: () => void;
   onOpen: (destinationId: string) => void;
+  onFocus: (destinationId: string) => void;
   onBack: () => void;
 }) {
   if (viewingDestination) {
@@ -386,17 +667,178 @@ function DiscoverSurface({
     );
   }
 
+  const hasActiveSearchOrFilters =
+    search.trim() !== "" ||
+    selectedCategories.length > 0 ||
+    selectedAreas.length > 0;
+  const noViewportMatch =
+    viewportScoped && baseCount > 0 && results.length === 0;
+  const activeFilterCount =
+    selectedCategories.length + selectedAreas.length;
+  const filterFields = (
+    <DiscoveryFilterFields
+      availableCategories={availableCategories}
+      selectedCategories={selectedCategories}
+      onToggleCategory={onToggleCategory}
+      availableAreas={availableAreas}
+      selectedAreas={selectedAreas}
+      onToggleArea={onToggleArea}
+    />
+  );
+
   return (
     <ScrollArea className="surface-scroll">
       <div className="surface-layout">
-        <header className="surface-intro">
-          <Badge variant="secondary">Batam essentials</Badge>
+        <header className="surface-intro surface-intro-compact">
           <h1>Where do you want to go?</h1>
-          <p>
-            Explore owner-curated Destinations without creating or changing a
-            Trip.
-          </p>
+          <p>Explore owner-curated Batam Destinations.</p>
         </header>
+
+        <section
+          className="discovery-toolbar-shell"
+          aria-label="Search and filter Destinations"
+        >
+          <div className="discovery-toolbar">
+            <div className="discovery-search-input">
+              <SearchIcon aria-hidden="true" />
+              <Input
+                id="destination-search"
+                type="search"
+                autoComplete="off"
+                aria-label="Search Destinations"
+                placeholder="Search Destinations"
+                value={search}
+                onChange={(event) => onSearchChange(event.target.value)}
+              />
+              {search !== "" && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Clear search"
+                  onClick={() => onSearchChange("")}
+                >
+                  <XIcon data-icon="inline-start" />
+                </Button>
+              )}
+            </div>
+
+            {phoneLayout ? (
+              <Drawer showSwipeHandle>
+                <DrawerTrigger
+                  render={<Button type="button" variant="outline" />}
+                >
+                  <ListFilterIcon data-icon="inline-start" />
+                  Filters
+                  {activeFilterCount > 0 && (
+                    <Badge variant="secondary">{activeFilterCount}</Badge>
+                  )}
+                </DrawerTrigger>
+                <DrawerContent>
+                  <DrawerHeader>
+                    <DrawerTitle>Filter Destinations</DrawerTitle>
+                    <DrawerDescription>
+                      Select any combination of categories and areas.
+                    </DrawerDescription>
+                  </DrawerHeader>
+                  <div className="discovery-filter-drawer-body">
+                    {filterFields}
+                  </div>
+                  <DrawerFooter>
+                    <DrawerClose render={<Button type="button" />}>Done</DrawerClose>
+                  </DrawerFooter>
+                </DrawerContent>
+              </Drawer>
+            ) : (
+              <Popover>
+                <PopoverTrigger
+                  render={<Button type="button" variant="outline" />}
+                >
+                  <ListFilterIcon data-icon="inline-start" />
+                  Filters
+                  {activeFilterCount > 0 && (
+                    <Badge variant="secondary">{activeFilterCount}</Badge>
+                  )}
+                </PopoverTrigger>
+                <PopoverContent
+                  align="end"
+                  className="discovery-filter-popover"
+                >
+                  <PopoverHeader>
+                    <PopoverTitle>Filter Destinations</PopoverTitle>
+                    <PopoverDescription>
+                      Select any combination of categories and areas.
+                    </PopoverDescription>
+                  </PopoverHeader>
+                  {filterFields}
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
+
+          {(activeFilterCount > 0 || viewportScoped) && (
+            <div className="discovery-active-filters" aria-label="Active filters">
+              {selectedCategories.map((category) => (
+                <Badge
+                  key={category}
+                  variant="secondary"
+                  render={
+                    <button
+                      type="button"
+                      aria-label={`Remove ${category} category filter`}
+                      onClick={() => onToggleCategory(category)}
+                    />
+                  }
+                >
+                  {category}
+                  <XIcon aria-hidden="true" />
+                </Badge>
+              ))}
+              {selectedAreas.map((area) => (
+                <Badge
+                  key={area}
+                  variant="secondary"
+                  render={
+                    <button
+                      type="button"
+                      aria-label={`Remove ${area} area filter`}
+                      onClick={() => onToggleArea(area)}
+                    />
+                  }
+                >
+                  {area}
+                  <XIcon aria-hidden="true" />
+                </Badge>
+              ))}
+              {viewportScoped && (
+                <Badge
+                  variant="outline"
+                  render={
+                    <button
+                      type="button"
+                      aria-label="Show all Batam Destinations"
+                      onClick={onShowAll}
+                    />
+                  }
+                >
+                  <MapPinIcon aria-hidden="true" />
+                  Map area
+                  <XIcon aria-hidden="true" />
+                </Badge>
+              )}
+              {activeFilterCount > 1 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={onClearFilters}
+                >
+                  Clear filters
+                </Button>
+              )}
+            </div>
+          )}
+        </section>
 
         <section
           className="destination-collection"
@@ -405,9 +847,13 @@ function DiscoverSurface({
           <div className="collection-heading">
             <div>
               <h2 id="destinations-title">Published Destinations</h2>
-              <p>Curated Destinations, ordered A–Z</p>
+              <p aria-live="polite">
+                {results.length === destinations.length
+                  ? `Curated Destinations, ordered A–Z · ${results.length}`
+                  : `${results.length} of ${destinations.length} Destinations, ordered A–Z`}
+              </p>
             </div>
-            <Badge variant="outline">{destinations.length}</Badge>
+            <Badge variant="outline">{results.length}</Badge>
           </div>
 
           {destinations.length === 0 ? (
@@ -419,18 +865,87 @@ function DiscoverSurface({
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
+          ) : noViewportMatch ? (
+            <Empty className="border">
+              <EmptyHeader>
+                <EmptyTitle>No Destinations in this map area</EmptyTitle>
+                <EmptyDescription>
+                  {baseCount} {baseCount === 1 ? "Destination matches" : "Destinations match"} your
+                  search and filters elsewhere in Batam, but none fall inside
+                  the current map area.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button
+                  type="button"
+                  variant="default"
+                  className="min-h-11"
+                  onClick={onShowAll}
+                >
+                  <RotateCcwIcon data-icon="inline-start" />
+                  Show all Batam Destinations
+                </Button>
+                {hasActiveSearchOrFilters && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-11"
+                    onClick={onClearFilters}
+                  >
+                    Clear search &amp; filters
+                  </Button>
+                )}
+              </EmptyContent>
+            </Empty>
+          ) : results.length === 0 ? (
+            <Empty className="border">
+              <EmptyHeader>
+                <EmptyTitle>No matching Destinations</EmptyTitle>
+                <EmptyDescription>
+                  Nothing in the curated collection matches this search and
+                  filter combination. Try a different spelling or fewer filters.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button
+                  type="button"
+                  variant="default"
+                  className="min-h-11"
+                  onClick={onClearFilters}
+                >
+                  Clear search &amp; filters
+                </Button>
+                {viewportScoped && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-11"
+                    onClick={onShowAll}
+                  >
+                    <RotateCcwIcon data-icon="inline-start" />
+                    Show all Batam Destinations
+                  </Button>
+                )}
+              </EmptyContent>
+            </Empty>
           ) : (
             <div className="destination-grid">
-              {destinations.map((destination) => {
+              {results.map((destination) => {
                 const isFocused = destination.id === focusedDestination?.id;
 
                 return (
-                  <DestinationPresentationCard
+                  <div
                     key={destination.id}
-                    destination={destination}
-                    isFocused={isFocused}
-                    onOpen={onOpen}
-                  />
+                    onMouseEnter={() => onFocus(destination.id)}
+                    onFocus={() => onFocus(destination.id)}
+                  >
+                    <DestinationPresentationCard
+                      destination={destination}
+                      isFocused={isFocused}
+                      onOpen={onOpen}
+                      compact
+                    />
+                  </div>
                 );
               })}
             </div>
@@ -438,6 +953,75 @@ function DiscoverSurface({
         </section>
       </div>
     </ScrollArea>
+  );
+}
+
+function DiscoveryFilterFields({
+  availableCategories,
+  selectedCategories,
+  onToggleCategory,
+  availableAreas,
+  selectedAreas,
+  onToggleArea,
+}: {
+  availableCategories: string[];
+  selectedCategories: string[];
+  onToggleCategory: (category: string) => void;
+  availableAreas: string[];
+  selectedAreas: string[];
+  onToggleArea: (area: string) => void;
+}) {
+  return (
+    <div className="discovery-filter-fields">
+      {availableCategories.length > 0 && (
+        <FieldSet>
+          <FieldLegend variant="label">Category</FieldLegend>
+          <FieldGroup className="discovery-filter-grid">
+            {availableCategories.map((category) => {
+              const controlId = `filter-category-${category
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "-")}`;
+              return (
+                <Field key={category} orientation="horizontal">
+                  <Checkbox
+                    id={controlId}
+                    checked={selectedCategories.includes(category)}
+                    onCheckedChange={() => onToggleCategory(category)}
+                  />
+                  <FieldLabel htmlFor={controlId} className="font-normal">
+                    {category}
+                  </FieldLabel>
+                </Field>
+              );
+            })}
+          </FieldGroup>
+        </FieldSet>
+      )}
+      {availableAreas.length > 0 && (
+        <FieldSet>
+          <FieldLegend variant="label">Area</FieldLegend>
+          <FieldGroup className="discovery-filter-grid">
+            {availableAreas.map((area) => {
+              const controlId = `filter-area-${area
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "-")}`;
+              return (
+                <Field key={area} orientation="horizontal">
+                  <Checkbox
+                    id={controlId}
+                    checked={selectedAreas.includes(area)}
+                    onCheckedChange={() => onToggleArea(area)}
+                  />
+                  <FieldLabel htmlFor={controlId} className="font-normal">
+                    {area}
+                  </FieldLabel>
+                </Field>
+              );
+            })}
+          </FieldGroup>
+        </FieldSet>
+      )}
+    </div>
   );
 }
 

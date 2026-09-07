@@ -29,15 +29,18 @@ import {
   operatingHoursText,
 } from "~/destinations/destination-facts";
 import { DestinationMedia } from "~/destinations/destination-media";
+import { cn } from "~/lib/utils";
 
 export function DestinationPresentationCard({
   destination,
   isFocused = false,
   onOpen,
+  compact = false,
 }: {
   destination: Destination | DestinationPreview;
   isFocused?: boolean;
   onOpen?: (destinationId: string) => void;
+  compact?: boolean;
 }) {
   const hasFacts = Boolean(
     destination.entryCost ||
@@ -49,8 +52,14 @@ export function DestinationPresentationCard({
     destination.operatingHours?.kind === "unknown";
 
   return (
-    <Card>
-      <DestinationMedia image={destination.image} />
+    <Card
+      size={compact ? "sm" : "default"}
+      className={cn(compact && "destination-card-compact")}
+    >
+      <DestinationMedia
+        image={destination.image}
+        className={cn(compact && "destination-media-compact")}
+      />
       <CardHeader>
         <CardTitle>
           {onOpen ? (
@@ -148,7 +157,7 @@ export function DestinationPresentationCard({
             target="_blank"
             rel="noreferrer"
           >
-            View in Google Maps
+            {compact ? "Maps" : "View in Google Maps"}
             <ArrowUpRightIcon data-icon="inline-end" />
           </a>
         </CardFooter>

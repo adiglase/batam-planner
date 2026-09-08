@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   ArrowUpRightIcon,
   CalendarDaysIcon,
@@ -36,16 +37,18 @@ export function DestinationPresentationCard({
   isFocused = false,
   onOpen,
   compact = false,
+  selectionControl,
 }: {
   destination: Destination | DestinationPreview;
   isFocused?: boolean;
   onOpen?: (destinationId: string) => void;
   compact?: boolean;
+  selectionControl?: ReactNode;
 }) {
   const hasFacts = Boolean(
     destination.entryCost ||
-      destination.typicalVisitMinutes ||
-      destination.operatingHours,
+    destination.typicalVisitMinutes ||
+    destination.operatingHours,
   );
   const hasWarning =
     destination.operationalStatus === "Temporarily closed" ||
@@ -132,7 +135,9 @@ export function DestinationPresentationCard({
                 <div>
                   <Clock3Icon aria-hidden="true" />
                   <dt>Visit</dt>
-                  <dd>{formatVisitDuration(destination.typicalVisitMinutes)}</dd>
+                  <dd>
+                    {formatVisitDuration(destination.typicalVisitMinutes)}
+                  </dd>
                 </div>
               )}
               {destination.operatingHours && (
@@ -146,20 +151,23 @@ export function DestinationPresentationCard({
           </>
         )}
       </CardContent>
-      {destination.googleMapsUrl && (
-        <CardFooter>
-          <a
-            className={buttonVariants({
-              variant: "default",
-              className: "w-full",
-            })}
-            href={destination.googleMapsUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {compact ? "Maps" : "View in Google Maps"}
-            <ArrowUpRightIcon data-icon="inline-end" />
-          </a>
+      {(destination.googleMapsUrl || selectionControl) && (
+        <CardFooter className="flex flex-wrap gap-2">
+          {selectionControl}
+          {destination.googleMapsUrl && (
+            <a
+              className={buttonVariants({
+                variant: selectionControl ? "ghost" : "outline",
+                className: selectionControl ? "ml-auto" : "w-full",
+              })}
+              href={destination.googleMapsUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {compact ? "Maps" : "View in Google Maps"}
+              <ArrowUpRightIcon data-icon="inline-end" />
+            </a>
+          )}
         </CardFooter>
       )}
     </Card>

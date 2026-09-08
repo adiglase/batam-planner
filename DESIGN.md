@@ -75,7 +75,8 @@ The map and planning workspace are persistent peers.
 - On larger screens, the map begins on the left at roughly 60% width and the workspace occupies the right.
 - On phones, the map begins above the workspace at roughly 45% height.
 - The divider is pointer- and keyboard-operable and constrains each available region to 35–65%.
-- Discover, Trip, and Itinerary remain in one stable tab location so changing planning surfaces does not reset map context.
+- Discover, Trip details, and Itinerary remain in one stable tab location so changing planning surfaces does not reset map context.
+- My Trips switches between saved Trips; the active Trip name appears beside it. Trip details and Itinerary show only that active Trip. Each saved Trip is one selectable row with name, known dates, Destination count, status, and an explicit Active indicator.
 - Workspace content uses a readable maximum width, generous outer padding, and compact spacing inside data-heavy cards.
 
 Responsive design preserves the relationship between map and content; it does not collapse the application into a conventional page with the map removed.

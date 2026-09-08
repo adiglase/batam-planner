@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import {
+  ChevronDownIcon,
+  PlusIcon,
   CalendarDaysIcon,
   CompassIcon,
   ListFilterIcon,
@@ -190,7 +192,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   useEffect(() => {
     if (!trips.ready) return;
     setActiveSurface(
-      trips.activeTrip ? reopeningSurface(trips.activeTrip) : "discover",
+      trips.activeTrip && !trips.editing
+        ? reopeningSurface(trips.activeTrip)
+        : "discover",
     );
     setViewingId(null);
     restoreRef.current = null;
@@ -421,6 +425,18 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     ? destinations.find((destination) => destination.id === viewingId)
     : undefined;
 
+  function startTrip() {
+    trips.create();
+    setSearch("");
+    setSelectedCategories([]);
+    setSelectedAreas([]);
+    setAppliedBounds(null);
+    setViewingId(null);
+    restoreRef.current = null;
+    setActiveSurface("discover");
+    setTripListOpen(false);
+  }
+
   function adjustSplit(delta: number) {
     const layout = phoneLayout ? "mobile" : "desktop";
     setSplit((current) => ({
@@ -478,11 +494,11 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             onOpenDestination={openFromMap}
             onFocusDestination={focusDestination}
           />
-          {trips.editing && focusedDestination && (
+          {trips.editing && viewingDestination && (
             <div className="trip-map-selection">
-              <span>{focusedDestination.name}</span>
+              <span>{viewingDestination.name}</span>
               <DestinationSelection
-                destination={focusedDestination}
+                destination={viewingDestination}
                 trips={trips}
               />
             </div>
@@ -576,6 +592,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                   {trips.activeTrip?.name ||
                     (trips.activeTrip ? "Untitled Trip" : "Your Trips")}
                 </span>
+                <ChevronDownIcon data-icon="inline-end" />
               </PopoverTrigger>
               <PopoverContent className="max-h-96 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto">
                 <PopoverHeader>
@@ -612,23 +629,36 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                     <Badge variant="secondary">{tripStatus(trip)}</Badge>
                   </div>
                 ))}
-                <Button
-                  onClick={() => {
-                    trips.create();
-                    setActiveSurface("trip");
-                    setTripListOpen(false);
-                  }}
-                >
-                  Create new trip
-                </Button>
+                <Button onClick={startTrip}>Create new trip</Button>
               </PopoverContent>
             </Popover>
-            {trips.activeTrip && (
-              <Button onClick={() => trips.setEditing(!trips.editing)}>
-                {trips.editing ? "Done" : "Edit trip"}
+            {!trips.activeTrip && (
+              <Button disabled={!trips.ready} onClick={startTrip}>
+                <PlusIcon data-icon="inline-start" />
+                Create new trip
               </Button>
             )}
-            {trips.editing && <Badge variant="secondary">Editing trip</Badge>}
+            {trips.activeTrip && (
+              <div className="ml-auto flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">
+                  {trips.activeTrip.destinations.length} selected
+                </span>
+                <Button
+                  onClick={() => {
+                    if (trips.editing) {
+                      trips.setEditing(false);
+                      setActiveSurface("trip");
+                      setViewingId(null);
+                      restoreRef.current = null;
+                    } else {
+                      trips.setEditing(true);
+                    }
+                  }}
+                >
+                  {trips.editing ? "Done" : "Edit trip"}
+                </Button>
+              </div>
+            )}
             {trips.failed && (
               <Alert variant="destructive">
                 <AlertTitle>This trip isn’t being saved</AlertTitle>
@@ -660,6 +690,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             <div ref={discoverRegionRef} className="surface-scroll-region">
               <DiscoverSurface
                 trips={trips}
+                onCreate={startTrip}
                 destinations={destinations}
                 results={results}
                 baseCount={baseFiltered.length}
@@ -694,7 +725,12 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               <div className="surface-layout">
                 <TripSurface
                   trips={trips}
-                  onDiscover={() => setActiveSurface("discover")}
+                  onCreate={startTrip}
+                  onDiscover={() => {
+                    trips.setEditing(true);
+                    setViewingId(null);
+                    setActiveSurface("discover");
+                  }}
                   onDeleted={() => setViewingId(null)}
                 />
               </div>
@@ -715,6 +751,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
 function DiscoverSurface({
   trips,
+  onCreate,
   destinations,
   results,
   baseCount,
@@ -737,6 +774,7 @@ function DiscoverSurface({
   onBack,
 }: {
   trips: TripControls;
+  onCreate: () => void;
   destinations: Destination[];
   results: Destination[];
   baseCount: number;
@@ -797,9 +835,39 @@ function DiscoverSurface({
     <ScrollArea className="surface-scroll">
       <div className="surface-layout">
         <header className="surface-intro surface-intro-compact">
-          <h1>Where do you want to go?</h1>
-          <p>Explore owner-curated Batam Destinations.</p>
+          <h1>
+            {trips.editing
+              ? "Choose your Destinations"
+              : "Where do you want to go?"}
+          </h1>
+          <p>
+            {trips.editing
+              ? "Add the Destinations you want to visit. Choose Done to review your Trip."
+              : "Explore owner-curated Batam Destinations."}
+          </p>
         </header>
+
+        {!trips.activeTrip && trips.ready && (
+          <Empty className="items-start border bg-card p-5 text-left">
+            <EmptyHeader className="items-start text-left">
+              <EmptyTitle>Make a Trip of your own</EmptyTitle>
+              <EmptyDescription>
+                Create a Trip, choose the Destinations you want to visit, then
+                review your selection. No dates or name needed to start.
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent className="items-start">
+              <Button onClick={onCreate}>
+                <PlusIcon data-icon="inline-start" />
+                Create new trip
+              </Button>
+              <p className="text-sm text-muted-foreground">
+                Just exploring? Browse below and open any Destination for
+                details.
+              </p>
+            </EmptyContent>
+          </Empty>
+        )}
 
         <section
           className="discovery-toolbar-shell"
@@ -1054,11 +1122,19 @@ function DiscoverSurface({
                     onMouseEnter={() => onFocus(destination.id)}
                     onFocus={() => onFocus(destination.id)}
                   >
-                    <DestinationSelection
-                      destination={destination}
-                      trips={trips}
-                    />
                     <DestinationPresentationCard
+                      selectionControl={
+                        trips.activeTrip &&
+                        (trips.editing ||
+                          trips.activeTrip.destinations.some(
+                            ({ id }) => id === destination.id,
+                          )) ? (
+                          <DestinationSelection
+                            destination={destination}
+                            trips={trips}
+                          />
+                        ) : undefined
+                      }
                       destination={destination}
                       isFocused={isFocused}
                       onOpen={onOpen}

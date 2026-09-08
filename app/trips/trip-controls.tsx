@@ -1,3 +1,11 @@
+import { CheckIcon, PlusIcon, ArrowRightIcon } from "lucide-react";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyContent,
+} from "~/components/ui/empty";
 import type { Destination } from "~/destinations/destination";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -24,38 +32,66 @@ export function DestinationSelection({
   const selected = trips.activeTrip?.destinations.some(
     ({ id }) => id === destination.id,
   );
+  if (!trips.activeTrip) return null;
+  if (!trips.editing)
+    return selected ? (
+      <Badge variant="secondary">
+        <CheckIcon data-icon="inline-start" />
+        In this Trip
+      </Badge>
+    ) : null;
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {selected && <Badge variant="secondary">In this Trip</Badge>}
-      {trips.activeTrip && trips.editing && (
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!selected && !canSelect(destination)}
-          onClick={() => trips.toggle(destination)}
-          aria-label={`${selected ? "Remove" : "Add"} ${destination.name} ${selected ? "from" : "to"} Trip`}
-        >
-          {selected
-            ? "Remove from Trip"
-            : canSelect(destination)
-              ? "Add to Trip"
-              : "Temporarily closed"}
-        </Button>
+    <Button
+      variant={selected ? "secondary" : "outline"}
+      className="min-h-11"
+      disabled={!selected && !canSelect(destination)}
+      aria-pressed={!!selected}
+      onClick={() => trips.toggle(destination)}
+      aria-label={`${selected ? "Remove" : "Add"} ${destination.name} ${selected ? "from" : "to"} Trip`}
+    >
+      {selected ? (
+        <CheckIcon data-icon="inline-start" />
+      ) : (
+        <PlusIcon data-icon="inline-start" />
       )}
-    </div>
+      {selected
+        ? "Selected"
+        : canSelect(destination)
+          ? "Add to trip"
+          : "Unavailable"}
+    </Button>
   );
 }
 export function TripSurface({
   trips,
   onDiscover,
   onDeleted,
+  onCreate,
 }: {
   trips: TripControls;
   onDiscover: () => void;
   onDeleted: () => void;
+  onCreate: () => void;
 }) {
   const trip = trips.activeTrip;
-  if (!trip) return <p>Create a new Trip to start selecting Destinations.</p>;
+  if (!trip)
+    return (
+      <Empty>
+        <EmptyHeader>
+          <EmptyTitle>Start your Batam Trip</EmptyTitle>
+          <EmptyDescription>
+            Choose the Destinations you want to visit. You can name your Trip
+            and adjust your selection along the way.
+          </EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button onClick={onCreate}>
+            Create new trip
+            <ArrowRightIcon data-icon="inline-end" />
+          </Button>
+        </EmptyContent>
+      </Empty>
+    );
   return (
     <>
       <header className="surface-intro surface-intro-compact">
@@ -109,14 +145,17 @@ export function TripSurface({
               )}
             </div>
           ))}
-          <Button variant="outline" onClick={onDiscover}>
-            Browse Destinations
+          <Button onClick={onDiscover}>
+            {trips.editing
+              ? "Choose Destinations"
+              : "Edit trip & choose Destinations"}
+            <ArrowRightIcon data-icon="inline-end" />
           </Button>
         </CardContent>
       </Card>
       {trips.editing && (
         <Button
-          variant="destructive"
+          variant="ghost"
           onClick={() => {
             if (
               window.confirm(

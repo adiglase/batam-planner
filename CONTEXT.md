@@ -24,6 +24,10 @@ _Avoid_: Live place, public draft
 The Visitor's saved selection of Destinations, planning constraints, and current Itinerary, if one has been built.
 _Avoid_: Plan, journey
 
+**Active Trip**:
+The one saved Trip the Visitor is currently viewing or editing. A Visitor may keep multiple Trips, with exactly one active while saved Trips exist; the others remain saved when the active Trip changes.
+_Avoid_: Trip list (the collection of saved Trips, not the active Trip), current Itinerary (a result belonging to a Trip)
+
 **Itinerary**:
 A complete, feasible schedule that assigns every selected Destination to one Visit and includes the Travel between Visits.
 _Avoid_: Schedule, route, plan

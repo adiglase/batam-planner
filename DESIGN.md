@@ -66,7 +66,7 @@ Dark mode uses the same relationships rather than literal inverted colors: deep 
 
 Geist Variable is the sole interface family. Headings are compact and confident, with tight tracking and moderate weight rather than oversized display treatment. Body copy is concise, comfortable, and slightly muted. Labels communicate hierarchy through size and weight; avoid unnecessary all-caps outside small map labels.
 
-Use the display token for primary page questions, the body token for descriptions, and the label token for metadata and compact facts. Prefer sentence case throughout the product.
+Use the display token for primary page questions, the body token for descriptions, and the label token for metadata and compact facts. Prefer sentence case throughout the product. Glossary capitalization identifies domain terms; it does not require title case in action labels. Use sentence-case actions such as “Create new trip”, “Edit trip”, and “Add to trip”; use “My Trips” for the saved-Trip switcher and “Trip details” for the active Trip’s surface.
 
 ## Layout
 

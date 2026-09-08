@@ -3,6 +3,7 @@ import type { Destination } from "~/destinations/destination";
 import {
   createTrip,
   emptyCollection,
+  removeSelectedDestination,
   toggleDestination,
   TripRepository,
 } from "./trip-repository";
@@ -73,11 +74,7 @@ export function useTrips() {
       update((trip) => toggleDestination(trip, destination, editing));
     },
     removeDestination(id: string) {
-      update((trip) => ({
-        ...trip,
-        revision: trip.revision + 1,
-        destinations: trip.destinations.filter((d) => d.id !== id),
-      }));
+      update((trip) => removeSelectedDestination(trip, id));
     },
   };
 }

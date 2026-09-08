@@ -12,6 +12,11 @@ import {
 } from "lucide-react";
 import { Link } from "react-router";
 
+import { useTrips } from "~/trips/use-trips";
+import { reopeningSurface, tripStatus } from "~/trips/trip-repository";
+import { DestinationSelection, TripSurface } from "~/trips/trip-controls";
+import type { TripControls } from "~/trips/trip-controls";
+import { Alert, AlertTitle } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
@@ -49,12 +54,7 @@ import {
   PopoverTrigger,
 } from "~/components/ui/popover";
 import { ScrollArea } from "~/components/ui/scroll-area";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "~/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import type { Route } from "./+types/home";
 import type { Destination } from "~/destinations/destination";
 import { DESTINATION_CATEGORIES } from "~/destinations/destination";
@@ -79,7 +79,8 @@ export function meta() {
     { title: "Discover Batam | Batam Planner" },
     {
       name: "description",
-      content: "Browse owner-curated Batam Destinations and start shaping a Trip.",
+      content:
+        "Browse owner-curated Batam Destinations and start shaping a Trip.",
     },
   ];
 }
@@ -112,6 +113,8 @@ type RestoreSnapshot = {
 
 export default function Home({ loaderData }: Route.ComponentProps) {
   const { destinations } = loaderData;
+  const trips = useTrips();
+  const [tripListOpen, setTripListOpen] = useState(false);
   const [activeSurface, setActiveSurface] = useState<Surface>("discover");
   const [focusedId, setFocusedId] = useState<string | null>(
     destinations[0]?.id ?? null,
@@ -158,7 +161,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       setFocusedId(saved.focusedId);
     }
     if (saved.mapViewport) setMapViewport(saved.mapViewport);
-    setActiveSurface(saved.surface);
+    // Active Trip restoration owns the surface when one is present.
     setSessionRestored(true);
   }, [destinations]);
 
@@ -184,14 +187,26 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     activeSurface,
   ]);
 
+  useEffect(() => {
+    if (!trips.ready) return;
+    setActiveSurface(
+      trips.activeTrip ? reopeningSurface(trips.activeTrip) : "discover",
+    );
+    setViewingId(null);
+    restoreRef.current = null;
+  }, [trips.ready, trips.activeTripId]);
+
   const availableCategories = useMemo(() => {
-    const present = new Set(destinations.map(({ primaryCategory }) => primaryCategory));
+    const present = new Set(
+      destinations.map(({ primaryCategory }) => primaryCategory),
+    );
     return DESTINATION_CATEGORIES.filter((category) => present.has(category));
   }, [destinations]);
   const availableAreas = useMemo(
     () =>
       [...new Set(destinations.map(({ area }) => area).filter(Boolean))].sort(
-        (left, right) => left.localeCompare(right, "en", { sensitivity: "base" }),
+        (left, right) =>
+          left.localeCompare(right, "en", { sensitivity: "base" }),
       ),
     [destinations],
   );
@@ -221,8 +236,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   );
 
   const focusedDestination =
-    results.find((destination) => destination.id === focusedId) ??
-    results[0];
+    results.find((destination) => destination.id === focusedId) ?? results[0];
   const mapMarkers = useMemo(
     () =>
       results.map((destination) => ({
@@ -464,6 +478,15 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             onOpenDestination={openFromMap}
             onFocusDestination={focusDestination}
           />
+          {trips.editing && focusedDestination && (
+            <div className="trip-map-selection">
+              <span>{focusedDestination.name}</span>
+              <DestinationSelection
+                destination={focusedDestination}
+                trips={trips}
+              />
+            </div>
+          )}
           <div className="map-search-control">
             <Button
               type="button"
@@ -538,6 +561,80 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           value={activeSurface}
           onValueChange={(value) => setActiveSurface(value as Surface)}
         >
+          <div className="trip-workspace-header">
+            <Popover open={tripListOpen} onOpenChange={setTripListOpen}>
+              <PopoverTrigger
+                render={
+                  <Button
+                    variant="outline"
+                    disabled={!trips.ready}
+                    className="min-w-0 max-w-full"
+                  />
+                }
+              >
+                <span className="truncate">
+                  {trips.activeTrip?.name ||
+                    (trips.activeTrip ? "Untitled Trip" : "Your Trips")}
+                </span>
+              </PopoverTrigger>
+              <PopoverContent className="max-h-96 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto">
+                <PopoverHeader>
+                  <PopoverTitle>Your Trips</PopoverTitle>
+                  <PopoverDescription>
+                    Stored in this browser profile.
+                  </PopoverDescription>
+                </PopoverHeader>
+                {trips.trips.map((trip) => (
+                  <div key={trip.id} className="flex flex-col gap-1">
+                    <Button
+                      variant="ghost"
+                      className="h-auto justify-start whitespace-normal text-left"
+                      aria-current={
+                        trip.id === trips.activeTripId ? "true" : undefined
+                      }
+                      onClick={() => {
+                        trips.open(trip.id);
+                        setActiveSurface(reopeningSurface(trip));
+                        setViewingId(null);
+                        restoreRef.current = null;
+                        setTripListOpen(false);
+                      }}
+                    >
+                      {trip.name || "Untitled Trip"}
+                      {trip.id === trips.activeTripId ? " · Active" : ""}
+                    </Button>
+                    <p className="text-sm text-muted-foreground">
+                      {[trip.dates.arrival, trip.dates.departure]
+                        .filter(Boolean)
+                        .join(" – ") || "Dates not set"}{" "}
+                      · {trip.destinations.length} Destinations
+                    </p>
+                    <Badge variant="secondary">{tripStatus(trip)}</Badge>
+                  </div>
+                ))}
+                <Button
+                  onClick={() => {
+                    trips.create();
+                    setActiveSurface("trip");
+                    setTripListOpen(false);
+                  }}
+                >
+                  Create new trip
+                </Button>
+              </PopoverContent>
+            </Popover>
+            {trips.activeTrip && (
+              <Button onClick={() => trips.setEditing(!trips.editing)}>
+                {trips.editing ? "Done" : "Edit trip"}
+              </Button>
+            )}
+            {trips.editing && <Badge variant="secondary">Editing trip</Badge>}
+            {trips.failed && (
+              <Alert variant="destructive">
+                <AlertTitle>This trip isn’t being saved</AlertTitle>
+              </Alert>
+            )}
+          </div>
           <div className="workspace-tabs-shell">
             <TabsList
               className="grid w-full grid-cols-3"
@@ -562,6 +659,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           <TabsContent className="surface-content" value="discover" keepMounted>
             <div ref={discoverRegionRef} className="surface-scroll-region">
               <DiscoverSurface
+                trips={trips}
                 destinations={destinations}
                 results={results}
                 baseCount={baseFiltered.length}
@@ -592,11 +690,15 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             </div>
           </TabsContent>
           <TabsContent className="surface-content" value="trip">
-            <EmptySurface
-              eyebrow="Your Trip"
-              title="No Trip yet"
-              body="Create a Trip later when you are ready to select Destinations. Browsing remains commitment-free."
-            />
+            <ScrollArea className="surface-scroll">
+              <div className="surface-layout">
+                <TripSurface
+                  trips={trips}
+                  onDiscover={() => setActiveSurface("discover")}
+                  onDeleted={() => setViewingId(null)}
+                />
+              </div>
+            </ScrollArea>
           </TabsContent>
           <TabsContent className="surface-content" value="itinerary">
             <EmptySurface
@@ -612,6 +714,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 }
 
 function DiscoverSurface({
+  trips,
   destinations,
   results,
   baseCount,
@@ -633,6 +736,7 @@ function DiscoverSurface({
   onFocus,
   onBack,
 }: {
+  trips: TripControls;
   destinations: Destination[];
   results: Destination[];
   baseCount: number;
@@ -658,6 +762,10 @@ function DiscoverSurface({
     return (
       <ScrollArea className="surface-scroll">
         <div className="surface-layout">
+          <DestinationSelection
+            destination={viewingDestination}
+            trips={trips}
+          />
           <DestinationDetails
             destination={viewingDestination}
             onBack={onBack}
@@ -673,8 +781,7 @@ function DiscoverSurface({
     selectedAreas.length > 0;
   const noViewportMatch =
     viewportScoped && baseCount > 0 && results.length === 0;
-  const activeFilterCount =
-    selectedCategories.length + selectedAreas.length;
+  const activeFilterCount = selectedCategories.length + selectedAreas.length;
   const filterFields = (
     <DiscoveryFilterFields
       availableCategories={availableCategories}
@@ -745,7 +852,9 @@ function DiscoverSurface({
                     {filterFields}
                   </div>
                   <DrawerFooter>
-                    <DrawerClose render={<Button type="button" />}>Done</DrawerClose>
+                    <DrawerClose render={<Button type="button" />}>
+                      Done
+                    </DrawerClose>
                   </DrawerFooter>
                 </DrawerContent>
               </Drawer>
@@ -777,7 +886,10 @@ function DiscoverSurface({
           </div>
 
           {(activeFilterCount > 0 || viewportScoped) && (
-            <div className="discovery-active-filters" aria-label="Active filters">
+            <div
+              className="discovery-active-filters"
+              aria-label="Active filters"
+            >
               {selectedCategories.map((category) => (
                 <Badge
                   key={category}
@@ -870,9 +982,12 @@ function DiscoverSurface({
               <EmptyHeader>
                 <EmptyTitle>No Destinations in this map area</EmptyTitle>
                 <EmptyDescription>
-                  {baseCount} {baseCount === 1 ? "Destination matches" : "Destinations match"} your
-                  search and filters elsewhere in Batam, but none fall inside
-                  the current map area.
+                  {baseCount}{" "}
+                  {baseCount === 1
+                    ? "Destination matches"
+                    : "Destinations match"}{" "}
+                  your search and filters elsewhere in Batam, but none fall
+                  inside the current map area.
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
@@ -939,6 +1054,10 @@ function DiscoverSurface({
                     onMouseEnter={() => onFocus(destination.id)}
                     onFocus={() => onFocus(destination.id)}
                   >
+                    <DestinationSelection
+                      destination={destination}
+                      trips={trips}
+                    />
                     <DestinationPresentationCard
                       destination={destination}
                       isFocused={isFocused}

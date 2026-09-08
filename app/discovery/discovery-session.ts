@@ -29,21 +29,28 @@ export const NEUTRAL_DISCOVERY_STATE: PersistedDiscoveryState = {
  * (a new tab/session gets fresh storage). Trip data lives separately in
  * localStorage and is never touched here.
  */
-export function loadDiscoverySession(storage?: Storage | null): PersistedDiscoveryState {
-  const source =
-    storage ?? (typeof sessionStorage === "undefined" ? null : sessionStorage);
-  if (!source) return { ...NEUTRAL_DISCOVERY_STATE };
+export function loadDiscoverySession(
+  storage?: Storage | null,
+): PersistedDiscoveryState {
   try {
+    const source =
+      storage ??
+      (typeof sessionStorage === "undefined" ? null : sessionStorage);
+    if (!source) return { ...NEUTRAL_DISCOVERY_STATE };
     const raw = source.getItem(DISCOVERY_SESSION_KEY);
     if (!raw) return { ...NEUTRAL_DISCOVERY_STATE };
     const parsed = JSON.parse(raw) as Partial<PersistedDiscoveryState>;
     return {
       search: typeof parsed.search === "string" ? parsed.search : "",
       categories: Array.isArray(parsed.categories)
-        ? parsed.categories.filter((value): value is string => typeof value === "string")
+        ? parsed.categories.filter(
+            (value): value is string => typeof value === "string",
+          )
         : [],
       areas: Array.isArray(parsed.areas)
-        ? parsed.areas.filter((value): value is string => typeof value === "string")
+        ? parsed.areas.filter(
+            (value): value is string => typeof value === "string",
+          )
         : [],
       appliedBounds:
         parsed.appliedBounds &&
@@ -75,10 +82,11 @@ export function saveDiscoverySession(
   state: PersistedDiscoveryState,
   storage?: Storage | null,
 ): void {
-  const target =
-    storage ?? (typeof sessionStorage === "undefined" ? null : sessionStorage);
-  if (!target) return;
   try {
+    const target =
+      storage ??
+      (typeof sessionStorage === "undefined" ? null : sessionStorage);
+    if (!target) return;
     target.setItem(DISCOVERY_SESSION_KEY, JSON.stringify(state));
   } catch {
     // Session persistence is best-effort; discovery still works in memory.

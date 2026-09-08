@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import {
-  ChevronDownIcon,
   PlusIcon,
   CalendarDaysIcon,
   CompassIcon,
@@ -14,8 +13,9 @@ import {
 } from "lucide-react";
 import { Link } from "react-router";
 
+import { TripSwitcher } from "~/trips/trip-switcher";
 import { useTrips } from "~/trips/use-trips";
-import { reopeningSurface, tripStatus } from "~/trips/trip-repository";
+import { reopeningSurface } from "~/trips/trip-repository";
 import { DestinationSelection, TripSurface } from "~/trips/trip-controls";
 import type { TripControls } from "~/trips/trip-controls";
 import { Alert, AlertTitle } from "~/components/ui/alert";
@@ -578,60 +578,29 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           onValueChange={(value) => setActiveSurface(value as Surface)}
         >
           <div className="trip-workspace-header">
-            <Popover open={tripListOpen} onOpenChange={setTripListOpen}>
-              <PopoverTrigger
-                render={
-                  <Button
-                    variant="outline"
-                    disabled={!trips.ready}
-                    className="min-w-0 max-w-full"
-                  />
-                }
-              >
-                <span className="truncate">
-                  {trips.activeTrip?.name ||
-                    (trips.activeTrip ? "Untitled Trip" : "Your Trips")}
+            <div className="flex min-w-0 flex-1 basis-full items-center gap-3 md:basis-auto">
+              <TripSwitcher
+                trips={trips}
+                open={tripListOpen}
+                onOpenChange={setTripListOpen}
+                onCreate={startTrip}
+                onChoose={(trip) => {
+                  trips.open(trip.id);
+                  setActiveSurface(reopeningSurface(trip));
+                  setViewingId(null);
+                  restoreRef.current = null;
+                  setTripListOpen(false);
+                }}
+              />
+              {trips.activeTrip && (
+                <span
+                  className="min-w-0 truncate text-sm"
+                  title={trips.activeTrip.name || "Untitled Trip"}
+                >
+                  {trips.activeTrip.name || "Untitled Trip"}
                 </span>
-                <ChevronDownIcon data-icon="inline-end" />
-              </PopoverTrigger>
-              <PopoverContent className="max-h-96 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto">
-                <PopoverHeader>
-                  <PopoverTitle>Your Trips</PopoverTitle>
-                  <PopoverDescription>
-                    Stored in this browser profile.
-                  </PopoverDescription>
-                </PopoverHeader>
-                {trips.trips.map((trip) => (
-                  <div key={trip.id} className="flex flex-col gap-1">
-                    <Button
-                      variant="ghost"
-                      className="h-auto justify-start whitespace-normal text-left"
-                      aria-current={
-                        trip.id === trips.activeTripId ? "true" : undefined
-                      }
-                      onClick={() => {
-                        trips.open(trip.id);
-                        setActiveSurface(reopeningSurface(trip));
-                        setViewingId(null);
-                        restoreRef.current = null;
-                        setTripListOpen(false);
-                      }}
-                    >
-                      {trip.name || "Untitled Trip"}
-                      {trip.id === trips.activeTripId ? " · Active" : ""}
-                    </Button>
-                    <p className="text-sm text-muted-foreground">
-                      {[trip.dates.arrival, trip.dates.departure]
-                        .filter(Boolean)
-                        .join(" – ") || "Dates not set"}{" "}
-                      · {trip.destinations.length} Destinations
-                    </p>
-                    <Badge variant="secondary">{tripStatus(trip)}</Badge>
-                  </div>
-                ))}
-                <Button onClick={startTrip}>Create new trip</Button>
-              </PopoverContent>
-            </Popover>
+              )}
+            </div>
             {!trips.activeTrip && (
               <Button disabled={!trips.ready} onClick={startTrip}>
                 <PlusIcon data-icon="inline-start" />
@@ -677,7 +646,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               </TabsTrigger>
               <TabsTrigger value="trip">
                 <LuggageIcon data-icon="inline-start" />
-                Trip
+                Trip details
               </TabsTrigger>
               <TabsTrigger value="itinerary">
                 <CalendarDaysIcon data-icon="inline-start" />

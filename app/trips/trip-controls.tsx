@@ -85,25 +85,6 @@ export function DestinationSelection({
     );
   }
 
-  if (destination.primaryCategory === "Accommodation") {
-    if (!trips.editing) return null;
-    return (
-      <Button
-        variant="outline"
-        className="min-h-11"
-        disabled={!canSetAsAccommodation(destination)}
-        aria-pressed={false}
-        onClick={() => trips.setAccommodation(destination)}
-        aria-label={`Set ${destination.name} as Accommodation`}
-      >
-        <BedDoubleIcon data-icon="inline-start" />
-        {canSetAsAccommodation(destination)
-          ? "Set as accommodation"
-          : "Unavailable"}
-      </Button>
-    );
-  }
-
   if (!trips.editing)
     return selected ? (
       <Badge variant="secondary">
@@ -111,7 +92,7 @@ export function DestinationSelection({
         In this Trip
       </Badge>
     ) : null;
-  return (
+  const visitControl = (
     <Button
       variant={selected ? "secondary" : "outline"}
       className="min-h-11"
@@ -132,6 +113,29 @@ export function DestinationSelection({
           : "Unavailable"}
     </Button>
   );
+
+  if (destination.primaryCategory === "Accommodation") {
+    return (
+      <div className="flex flex-wrap gap-2">
+        {visitControl}
+        <Button
+          variant="outline"
+          className="min-h-11"
+          disabled={!canSetAsAccommodation(destination)}
+          aria-pressed={false}
+          onClick={() => trips.setAccommodation(destination)}
+          aria-label={`Set ${destination.name} as Accommodation`}
+        >
+          <BedDoubleIcon data-icon="inline-start" />
+          {canSetAsAccommodation(destination)
+            ? "Set as accommodation"
+            : "Accommodation unavailable"}
+        </Button>
+      </div>
+    );
+  }
+
+  return visitControl;
 }
 export function TripSurface({
   trips,

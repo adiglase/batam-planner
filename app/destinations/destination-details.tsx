@@ -1,11 +1,13 @@
 import {
   ArrowLeftIcon,
   ArrowUpRightIcon,
+  BedDoubleIcon,
   CalendarDaysIcon,
   Clock3Icon,
   GlobeIcon,
   InfoIcon,
   MapPinIcon,
+  RouteIcon,
   TagIcon,
   TicketIcon,
   TriangleAlertIcon,
@@ -29,6 +31,16 @@ import {
   operatingHoursText,
 } from "~/destinations/destination-facts";
 import { DestinationMedia } from "~/destinations/destination-media";
+import type { AccommodationRef } from "~/trips/trip-repository";
+import type { PrimaryTransportMode } from "~/trips/trip-repository";
+import { isAccommodation } from "~/trips/trip-repository";
+import {
+  formatTravelEstimate,
+  TRANSPORT_MODE_LABELS,
+} from "~/routing/travel-estimate";
+import type { RoutingProvider } from "~/routing/routing-provider";
+import { unavailableRoutingProvider } from "~/routing/routing-provider";
+import { useTravelEstimate } from "~/routing/use-travel-estimate";
 
 /**
  * The complete curated English facts for one Published Destination.
@@ -37,14 +49,37 @@ import { DestinationMedia } from "~/destinations/destination-media";
 export function DestinationDetails({
   destination,
   onBack,
+  accommodation = null,
+  transportMode = null,
+  routingProvider,
 }: {
   destination: Destination;
   onBack: () => void;
+  accommodation?: AccommodationRef | null;
+  transportMode?: PrimaryTransportMode | null;
+  routingProvider?: RoutingProvider;
 }) {
   const entryCost = destination.entryCost;
   const operatingHours = destination.operatingHours;
   const isTemporarilyClosed =
     destination.operationalStatus === "Temporarily closed";
+  const isAccommodationAnchor = isAccommodation(
+    { accommodation },
+    destination.id,
+  );
+  // One comparison only, from the Accommodation anchor to this focused
+  // Destination, requested through the provider-independent contract when
+  // both Accommodation and transport are known. Never precomputed for
+  // result lists and never drawn on the map.
+  const travelStatus = useTravelEstimate({
+    origin: accommodation?.coordinates ?? null,
+    destination: destination.coordinates,
+    mode:
+      accommodation && transportMode && !isAccommodationAnchor
+        ? transportMode
+        : null,
+    provider: routingProvider ?? unavailableRoutingProvider,
+  });
 
   return (
     <div className="destination-detail-layout">
@@ -69,6 +104,12 @@ export function DestinationDetails({
                 <Badge variant="outline">
                   <MapPinIcon data-icon="inline-start" />
                   {destination.area}
+                </Badge>
+              )}
+              {isAccommodationAnchor && (
+                <Badge variant="secondary">
+                  <BedDoubleIcon data-icon="inline-start" />
+                  Accommodation
                 </Badge>
               )}
             </div>
@@ -160,6 +201,14 @@ export function DestinationDetails({
               </div>
             )}
 
+            <TravelFromAccommodation
+              destinationName={destination.name}
+              accommodationName={accommodation?.name ?? null}
+              transportMode={transportMode}
+              isAccommodation={isAccommodationAnchor}
+              travelStatus={travelStatus}
+            />
+
             <p className="destination-detail-assurance">
               Inspecting this Destination never changes your Trip.
             </p>
@@ -197,5 +246,77 @@ export function DestinationDetails({
         </Card>
       </article>
     </div>
+  );
+}
+
+/**
+ * One traffic-unaware road Travel comparison from the Trip's Accommodation
+ * to the focused Destination. Rendered only in Destination details: never
+ * precomputed across result lists and never drawn on the map. An
+ * unavailable calculation reports unavailability without straight-line,
+ * invented, or substituted information.
+ */
+function TravelFromAccommodation({
+  destinationName,
+  accommodationName,
+  transportMode,
+  isAccommodation,
+  travelStatus,
+}: {
+  destinationName: string;
+  accommodationName: string | null;
+  transportMode: PrimaryTransportMode | null;
+  isAccommodation: boolean;
+  travelStatus: ReturnType<typeof useTravelEstimate>;
+}) {
+  return (
+    <section aria-label="Travel from your Accommodation">
+      <Separator />
+      <div className="destination-detail-travel">
+        <RouteIcon aria-hidden="true" />
+        {isAccommodation ? (
+          <p>
+            This is your Accommodation. Travel estimates measure from here to
+            other Destinations.
+          </p>
+        ) : !accommodationName ? (
+          <p>Set an Accommodation to see a Travel estimate.</p>
+        ) : !transportMode ? (
+          <p>Choose transport to see a Travel estimate.</p>
+        ) : (
+          <>
+            <h2>From your Accommodation</h2>
+            {travelStatus.state === "loading" && (
+              <p aria-live="polite">Calculating travel…</p>
+            )}
+            {travelStatus.state === "ready" && (
+              <>
+                <p aria-live="polite">
+                  {formatTravelEstimate(travelStatus.estimate)}
+                  <span className="sr-only">
+                    {" "}
+                    to {destinationName} from {accommodationName} by{" "}
+                    {TRANSPORT_MODE_LABELS[travelStatus.estimate.mode]}
+                  </span>
+                </p>
+                <p className="destination-fact-note">
+                  Traffic-unaware estimate · Non-live · Not guaranteed.
+                </p>
+              </>
+            )}
+            {travelStatus.state === "unavailable" && (
+              <>
+                <p aria-live="polite">Travel unavailable</p>
+                <p className="destination-fact-note">
+                  We could not calculate road travel from {accommodationName}.
+                  Distances and durations are shown only from measured road
+                  estimates.
+                </p>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </section>
   );
 }

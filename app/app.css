@@ -755,6 +755,35 @@ a {
   list-style: none;
 }
 
+.destination-detail-travel {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.5rem;
+  align-items: start;
+  margin-top: 1rem;
+}
+
+.destination-detail-travel > svg {
+  grid-row: 1 / 4;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.1rem;
+  color: var(--muted-foreground);
+}
+
+.destination-detail-travel h2 {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+
+.destination-detail-travel p {
+  grid-column: 2;
+  margin: 0.15rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
 .destination-detail-actions {
   display: flex;
   flex-wrap: wrap;

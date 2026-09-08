@@ -74,6 +74,9 @@ import {
 } from "~/discovery/discovery-session";
 import { BATAM_MAP_CENTER } from "~/geography/coordinates";
 import { ConfiguredMap } from "~/map/configured-map";
+import { isAccommodation } from "~/trips/trip-repository";
+import type { RoutingProvider } from "~/routing/routing-provider";
+import { unavailableRoutingProvider } from "~/routing/routing-provider";
 import type { MapViewport } from "~/map/map-provider";
 
 export function meta() {
@@ -425,6 +428,11 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     ? destinations.find((destination) => destination.id === viewingId)
     : undefined;
 
+  // Provider-independent routing seam (ADR-0001). The Google Routes
+  // adapter is deferred, so the default reports calculations as
+  // unavailable rather than inventing information.
+  const routingProvider = useMemo(() => unavailableRoutingProvider, []);
+
   function startTrip() {
     trips.create();
     setSearch("");
@@ -665,6 +673,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 baseCount={baseFiltered.length}
                 focusedDestination={focusedDestination}
                 viewingDestination={viewingDestination}
+                routingProvider={routingProvider}
                 search={search}
                 onSearchChange={setSearch}
                 availableCategories={availableCategories}
@@ -726,6 +735,7 @@ function DiscoverSurface({
   baseCount,
   focusedDestination,
   viewingDestination,
+  routingProvider,
   search,
   onSearchChange,
   availableCategories,
@@ -749,6 +759,7 @@ function DiscoverSurface({
   baseCount: number;
   focusedDestination?: Destination;
   viewingDestination?: Destination;
+  routingProvider: RoutingProvider;
   search: string;
   onSearchChange: (value: string) => void;
   availableCategories: string[];
@@ -776,6 +787,9 @@ function DiscoverSurface({
           <DestinationDetails
             destination={viewingDestination}
             onBack={onBack}
+            accommodation={trips.activeTrip?.accommodation ?? null}
+            transportMode={trips.activeTrip?.transportMode ?? null}
+            routingProvider={routingProvider}
           />
         </div>
       </ScrollArea>
@@ -1097,6 +1111,10 @@ function DiscoverSurface({
                         (trips.editing ||
                           trips.activeTrip.destinations.some(
                             ({ id }) => id === destination.id,
+                          ) ||
+                          isAccommodation(
+                            trips.activeTrip,
+                            destination.id,
                           )) ? (
                           <DestinationSelection
                             destination={destination}

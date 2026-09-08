@@ -1,13 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import type { Destination } from "~/destinations/destination";
 import {
+  clearAccommodation,
   createTrip,
   emptyCollection,
   removeSelectedDestination,
+  setAccommodation,
+  setTransportMode,
   toggleDestination,
   TripRepository,
 } from "./trip-repository";
-import type { Trip, TripCollection } from "./trip-repository";
+import type {
+  PrimaryTransportMode,
+  Trip,
+  TripCollection,
+} from "./trip-repository";
 
 export function useTrips() {
   const repository = useRef<TripRepository | null>(null);
@@ -72,6 +79,15 @@ export function useTrips() {
     },
     toggle(destination: Destination) {
       update((trip) => toggleDestination(trip, destination, editing));
+    },
+    setAccommodation(destination: Destination) {
+      update((trip) => setAccommodation(trip, destination, editing));
+    },
+    clearAccommodation() {
+      update((trip) => clearAccommodation(trip, editing));
+    },
+    setTransportMode(mode: PrimaryTransportMode) {
+      update((trip) => setTransportMode(trip, mode, editing));
     },
     removeDestination(id: string) {
       update((trip) => removeSelectedDestination(trip, id));

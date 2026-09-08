@@ -1,4 +1,9 @@
-import { CheckIcon, PlusIcon, ArrowRightIcon } from "lucide-react";
+import {
+  BedDoubleIcon,
+  CheckIcon,
+  PlusIcon,
+  ArrowRightIcon,
+} from "lucide-react";
 import {
   Empty,
   EmptyHeader,
@@ -18,10 +23,24 @@ import {
 } from "~/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
-import { canSelect, tripStatus } from "./trip-repository";
+import { Label } from "~/components/ui/label";
+import { TRANSPORT_MODE_LABELS } from "~/routing/travel-estimate";
+import {
+  canSelect,
+  canSetAsAccommodation,
+  isAccommodation,
+  tripStatus,
+  TRANSPORT_MODES,
+} from "./trip-repository";
 import type { useTrips } from "./use-trips";
 
 export type TripControls = ReturnType<typeof useTrips>;
+/**
+ * Selection affordance for one Destination. Visit selection ("Add to
+ * trip") and Accommodation ("Set as accommodation") are mutually
+ * exclusive roles: the Accommodation anchor is always visibly distinct
+ * and can never simultaneously be a selected Visit.
+ */
 export function DestinationSelection({
   destination,
   trips,
@@ -29,10 +48,52 @@ export function DestinationSelection({
   destination: Destination;
   trips: TripControls;
 }) {
-  const selected = trips.activeTrip?.destinations.some(
-    ({ id }) => id === destination.id,
-  );
-  if (!trips.activeTrip) return null;
+  const trip = trips.activeTrip;
+  if (!trip) return null;
+  const anchor = isAccommodation(trip, destination.id);
+  const selected = trip.destinations.some(({ id }) => id === destination.id);
+
+  if (anchor) {
+    if (!trips.editing)
+      return (
+        <Badge variant="secondary">
+          <BedDoubleIcon data-icon="inline-start" />
+          Accommodation
+        </Badge>
+      );
+    return (
+      <Button
+        variant="secondary"
+        className="min-h-11"
+        aria-pressed={true}
+        onClick={() => trips.clearAccommodation()}
+        aria-label={`Clear ${destination.name} as Accommodation`}
+      >
+        <BedDoubleIcon data-icon="inline-start" />
+        Accommodation set
+      </Button>
+    );
+  }
+
+  if (destination.primaryCategory === "Accommodation") {
+    if (!trips.editing) return null;
+    return (
+      <Button
+        variant="outline"
+        className="min-h-11"
+        disabled={!canSetAsAccommodation(destination)}
+        aria-pressed={false}
+        onClick={() => trips.setAccommodation(destination)}
+        aria-label={`Set ${destination.name} as Accommodation`}
+      >
+        <BedDoubleIcon data-icon="inline-start" />
+        {canSetAsAccommodation(destination)
+          ? "Set as accommodation"
+          : "Unavailable"}
+      </Button>
+    );
+  }
+
   if (!trips.editing)
     return selected ? (
       <Badge variant="secondary">
@@ -111,6 +172,93 @@ export function TripSurface({
           </Field>
         </FieldGroup>
       )}
+      <Card>
+        <CardHeader>
+          <CardTitle>Accommodation</CardTitle>
+          <CardDescription>
+            Optional overnight anchor. It stays distinct from selected Visits
+            and is never scheduled as one.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {trip.accommodation ? (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="flex flex-wrap items-center gap-2">
+                <BedDoubleIcon aria-hidden="true" />
+                <span>{trip.accommodation.name}</span>
+                <Badge variant="secondary">Accommodation</Badge>
+              </span>
+              {trips.editing && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-label={`Clear ${trip.accommodation.name} as Accommodation`}
+                  onClick={() => trips.clearAccommodation()}
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+          ) : (
+            <p>
+              {trips.editing
+                ? "No Accommodation set. Choose an Accommodation-category Destination from Discover."
+                : "No Accommodation set."}
+            </p>
+          )}
+          <Button variant="outline" onClick={onDiscover}>
+            {trip.accommodation
+              ? "Change accommodation"
+              : trips.editing
+                ? "Choose accommodation"
+                : "View accommodation options"}
+            <ArrowRightIcon data-icon="inline-end" />
+          </Button>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Primary transport</CardTitle>
+          <CardDescription>
+            Used for the Accommodation travel estimate.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {trips.editing ? (
+            <fieldset>
+              <legend className="sr-only">Primary transport</legend>
+              <div className="flex flex-col gap-2">
+                {TRANSPORT_MODES.map((mode) => {
+                  const controlId = `primary-transport-${mode}`;
+                  return (
+                    <div
+                      key={mode}
+                      className="flex min-h-11 items-center gap-2"
+                    >
+                      <input
+                        id={controlId}
+                        type="radio"
+                        name="primary-transport"
+                        checked={trip.transportMode === mode}
+                        onChange={() => trips.setTransportMode(mode)}
+                      />
+                      <Label htmlFor={controlId} className="font-normal">
+                        {TRANSPORT_MODE_LABELS[mode]}
+                      </Label>
+                    </div>
+                  );
+                })}
+              </div>
+            </fieldset>
+          ) : (
+            <p>
+              {trip.transportMode
+                ? TRANSPORT_MODE_LABELS[trip.transportMode]
+                : "Transport not chosen yet."}
+            </p>
+          )}
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle>Selected Destinations</CardTitle>

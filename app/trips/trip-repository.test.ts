@@ -3,6 +3,7 @@ import {
   canSelect,
   createTrip,
   reopeningSurface,
+  removeSelectedDestination,
   toggleDestination,
   tripStatus,
   TripRepository,
@@ -76,6 +77,26 @@ describe("browser-local Trips", () => {
     expect(changed.itinerary).toEqual(trip.itinerary);
     expect(reopeningSurface(changed)).toBe("itinerary");
     expect(tripStatus({ ...trip, name: "Renamed" })).toBe("Itinerary ready");
+  });
+  it("keeps an Itinerary ready when removing an unselected Destination", () => {
+    const trip = {
+      ...toggleDestination(createTrip("trip"), destination, true),
+      itinerary: { inputRevision: 1, visits: [destination.id] },
+    };
+    const unchanged = removeSelectedDestination(trip, "not-selected");
+    expect(tripStatus(unchanged)).toBe("Itinerary ready");
+    expect(unchanged).toEqual(trip);
+  });
+  it("marks a real removal for rebuilding only once and preserves the Itinerary", () => {
+    const trip = {
+      ...toggleDestination(createTrip("trip"), destination, true),
+      itinerary: { inputRevision: 1, visits: [destination.id] },
+    };
+    const removed = removeSelectedDestination(trip, destination.id);
+    expect(removed.destinations).toEqual([]);
+    expect(tripStatus(removed)).toBe("Needs rebuilding");
+    expect(removed.itinerary).toEqual(trip.itinerary);
+    expect(removeSelectedDestination(removed, destination.id)).toEqual(removed);
   });
   it.each([
     "bad json",

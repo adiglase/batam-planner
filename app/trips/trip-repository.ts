@@ -61,6 +61,18 @@ export function toggleDestination(
   };
 }
 
+export function removeSelectedDestination(trip: Trip, id: string): Trip {
+  if (!trip.destinations.some((destination) => destination.id === id))
+    return trip;
+  return {
+    ...trip,
+    revision: trip.revision + 1,
+    destinations: trip.destinations.filter(
+      (destination) => destination.id !== id,
+    ),
+  };
+}
+
 function isTrip(value: unknown): value is Trip {
   if (!value || typeof value !== "object") return false;
   const t = value as Trip;

@@ -21,14 +21,24 @@ import {
   CardDescription,
   CardContent,
 } from "~/components/ui/card";
-import { Field, FieldGroup, FieldLabel } from "~/components/ui/field";
+import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
-import { Label } from "~/components/ui/label";
+import {
+  RadioGroup,
+  RadioGroupItem,
+} from "~/components/ui/radio-group";
 import { TRANSPORT_MODE_LABELS } from "~/routing/travel-estimate";
 import {
   canSelect,
   canSetAsAccommodation,
   isAccommodation,
+  isPrimaryTransportMode,
   tripStatus,
   TRANSPORT_MODES,
 } from "./trip-repository";
@@ -38,7 +48,7 @@ export type TripControls = ReturnType<typeof useTrips>;
 /**
  * Selection affordance for one Destination. Visit selection ("Add to
  * trip") and Accommodation ("Set as accommodation") are mutually
- * exclusive roles: the Accommodation anchor is always visibly distinct
+ * exclusive roles: the Accommodation is always visibly distinct
  * and can never simultaneously be a selected Visit.
  */
 export function DestinationSelection({
@@ -50,10 +60,10 @@ export function DestinationSelection({
 }) {
   const trip = trips.activeTrip;
   if (!trip) return null;
-  const anchor = isAccommodation(trip, destination.id);
+  const accommodation = isAccommodation(trip, destination.id);
   const selected = trip.destinations.some(({ id }) => id === destination.id);
 
-  if (anchor) {
+  if (accommodation) {
     if (!trips.editing)
       return (
         <Badge variant="secondary">
@@ -176,8 +186,8 @@ export function TripSurface({
         <CardHeader>
           <CardTitle>Accommodation</CardTitle>
           <CardDescription>
-            Optional overnight anchor. It stays distinct from selected Visits
-            and is never scheduled as one.
+            This optional Destination stays distinct from selected Visits and
+            is never scheduled as one.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
@@ -225,31 +235,36 @@ export function TripSurface({
         </CardHeader>
         <CardContent>
           {trips.editing ? (
-            <fieldset>
-              <legend className="sr-only">Primary transport</legend>
-              <div className="flex flex-col gap-2">
+            <FieldSet>
+              <FieldLegend className="sr-only">Primary transport</FieldLegend>
+              <RadioGroup
+                value={trip.transportMode ?? ""}
+                onValueChange={(mode) => {
+                  if (isPrimaryTransportMode(mode)) {
+                    trips.setTransportMode(mode);
+                  }
+                }}
+              >
                 {TRANSPORT_MODES.map((mode) => {
                   const controlId = `primary-transport-${mode}`;
                   return (
-                    <div
+                    <Field
                       key={mode}
-                      className="flex min-h-11 items-center gap-2"
+                      className="min-h-11"
+                      orientation="horizontal"
                     >
-                      <input
+                      <RadioGroupItem
                         id={controlId}
-                        type="radio"
-                        name="primary-transport"
-                        checked={trip.transportMode === mode}
-                        onChange={() => trips.setTransportMode(mode)}
+                        value={mode}
                       />
-                      <Label htmlFor={controlId} className="font-normal">
+                      <FieldLabel htmlFor={controlId} className="font-normal">
                         {TRANSPORT_MODE_LABELS[mode]}
-                      </Label>
-                    </div>
+                      </FieldLabel>
+                    </Field>
                   );
                 })}
-              </div>
-            </fieldset>
+              </RadioGroup>
+            </FieldSet>
           ) : (
             <p>
               {trip.transportMode

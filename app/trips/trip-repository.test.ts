@@ -184,30 +184,37 @@ describe("Accommodation and Primary transport", () => {
     expect(canSetAsAccommodation(destination)).toBe(false);
   });
   it("keeps Accommodation distinct from selected Visits in both directions", () => {
-    expect(canSelect(accommodation)).toBe(false);
+    expect(canSelect(accommodation)).toBe(true);
     const withVisit = toggleDestination(createTrip("trip"), destination, true);
-    const anchored = setAccommodation(withVisit, accommodation, true);
-    expect(anchored.accommodation?.id).toBe(accommodation.id);
-    expect(anchored.destinations.map((d) => d.id)).toEqual([destination.id]);
-    // Setting an Accommodation removes it from selected Visits when present.
-    const legacySelected = {
-      ...createTrip("stay"),
-      revision: 1,
-      destinations: [
-        {
-          id: accommodation.id,
-          name: accommodation.name,
-          coordinates: accommodation.coordinates,
-          typicalVisitMinutes: undefined,
-          operationalStatus: "Open" as const,
-        },
-      ],
-    };
-    const anchoredStay = setAccommodation(legacySelected, accommodation, true);
-    expect(anchoredStay.destinations).toEqual([]);
-    expect(anchoredStay.accommodation?.id).toBe(accommodation.id);
-    const visitBlocked = toggleDestination(anchored, accommodation, true);
-    expect(visitBlocked).toEqual(anchored);
+    const withAccommodation = setAccommodation(
+      withVisit,
+      accommodation,
+      true,
+    );
+    expect(withAccommodation.accommodation?.id).toBe(accommodation.id);
+    expect(withAccommodation.destinations.map((d) => d.id)).toEqual([
+      destination.id,
+    ]);
+
+    const accommodationVisit = toggleDestination(
+      createTrip("stay"),
+      accommodation,
+      true,
+    );
+    expect(accommodationVisit.destinations[0]?.id).toBe(accommodation.id);
+    const assignedAccommodation = setAccommodation(
+      accommodationVisit,
+      accommodation,
+      true,
+    );
+    expect(assignedAccommodation.destinations).toEqual([]);
+    expect(assignedAccommodation.accommodation?.id).toBe(accommodation.id);
+    const visitBlocked = toggleDestination(
+      withAccommodation,
+      accommodation,
+      true,
+    );
+    expect(visitBlocked).toEqual(withAccommodation);
   });
   it("changes Accommodation and clears it explicitly", () => {
     const first = setAccommodation(createTrip("trip"), accommodation, true);

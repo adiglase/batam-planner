@@ -67,7 +67,7 @@ export function DestinationDetails({
     { accommodation },
     destination.id,
   );
-  // One comparison only, from the Accommodation anchor to this focused
+  // One comparison only, from the Accommodation to this focused
   // Destination, requested through the provider-independent contract when
   // both Accommodation and transport are known. Never precomputed for
   // result lists and never drawn on the map.
@@ -250,8 +250,8 @@ export function DestinationDetails({
 }
 
 /**
- * One traffic-unaware road Travel comparison from the Trip's Accommodation
- * to the focused Destination. Rendered only in Destination details: never
+ * One traffic-unaware Travel comparison from the Trip's Accommodation to the
+ * focused Destination. Rendered only in Destination details: never
  * precomputed across result lists and never drawn on the map. An
  * unavailable calculation reports unavailability without straight-line,
  * invented, or substituted information.
@@ -282,7 +282,7 @@ function TravelFromAccommodation({
         ) : !accommodationName ? (
           <p>Set an Accommodation to see a Travel estimate.</p>
         ) : !transportMode ? (
-          <p>Choose transport to see a Travel estimate.</p>
+          <p>Choose Primary transport to see a Travel estimate.</p>
         ) : (
           <>
             <h2>From your Accommodation</h2>
@@ -308,7 +308,7 @@ function TravelFromAccommodation({
               <>
                 <p aria-live="polite">Travel unavailable</p>
                 <p className="destination-fact-note">
-                  We could not calculate road travel from {accommodationName}.
+                  We could not calculate Travel from {accommodationName}.
                   Distances and durations are shown only from measured road
                   estimates.
                 </p>

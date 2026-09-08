@@ -75,8 +75,8 @@ import {
 import { BATAM_MAP_CENTER } from "~/geography/coordinates";
 import { ConfiguredMap } from "~/map/configured-map";
 import { isAccommodation } from "~/trips/trip-repository";
+import { browserRoutingProvider } from "~/routing/browser-routing-provider";
 import type { RoutingProvider } from "~/routing/routing-provider";
-import { unavailableRoutingProvider } from "~/routing/routing-provider";
 import type { MapViewport } from "~/map/map-provider";
 
 export function meta() {
@@ -428,11 +428,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     ? destinations.find((destination) => destination.id === viewingId)
     : undefined;
 
-  // Provider-independent routing seam (ADR-0001). The Google Routes
-  // adapter is deferred, so the default reports calculations as
-  // unavailable rather than inventing information.
-  const routingProvider = useMemo(() => unavailableRoutingProvider, []);
-
   function startTrip() {
     trips.create();
     setSearch("");
@@ -673,7 +668,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 baseCount={baseFiltered.length}
                 focusedDestination={focusedDestination}
                 viewingDestination={viewingDestination}
-                routingProvider={routingProvider}
+                routingProvider={browserRoutingProvider}
                 search={search}
                 onSearchChange={setSearch}
                 availableCategories={availableCategories}

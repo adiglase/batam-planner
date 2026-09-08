@@ -19,6 +19,12 @@ export const TRANSPORT_MODES: readonly PrimaryTransportMode[] = [
   "walking",
 ] as const;
 
+export function isPrimaryTransportMode(
+  value: string,
+): value is PrimaryTransportMode {
+  return (TRANSPORT_MODES as readonly string[]).includes(value);
+}
+
 export type Trip = {
   id: string;
   name: string;
@@ -56,17 +62,12 @@ export function createTrip(id: string): Trip {
   };
 }
 /**
- * A Destination is selectable as a Visit only when it is Open and not an
- * Accommodation-category Destination. Accommodation-category Destinations
- * can only serve as the Trip's Accommodation (see
- * `canSetAsAccommodation`): they omit Typical visit duration and Entry
- * cost, so scheduling them as Visits would misrepresent the Itinerary.
+ * A Destination is selectable as a Visit when it is Open. The Destination
+ * assigned as the Trip's Accommodation is rejected separately by
+ * `toggleDestination`, keeping only those two roles mutually exclusive.
  */
 export function canSelect(destination: Destination) {
-  return (
-    destination.operationalStatus === "Open" &&
-    destination.primaryCategory !== "Accommodation"
-  );
+  return destination.operationalStatus === "Open";
 }
 /**
  * Any Open Published Accommodation-category Destination is eligible as
@@ -80,8 +81,8 @@ export function canSetAsAccommodation(destination: Destination) {
   );
 }
 /**
- * Whether the Destination currently anchors the Trip as Accommodation.
- * The anchor is never also a selected Visit.
+ * Whether the Destination is currently the Trip's Accommodation.
+ * The Accommodation is never also a selected Visit.
  */
 export function isAccommodation(
   trip: Pick<Trip, "accommodation">,
@@ -102,7 +103,7 @@ export function setAccommodation(
     ...trip,
     revision: trip.revision + 1,
     // Accommodation is distinct from Trip membership: the same Destination
-    // can never be both the anchor and a selected Visit.
+    // can never be both the Accommodation and a selected Visit.
     destinations: trip.destinations.filter((item) => item.id !== id),
     accommodation: { id, name, coordinates },
   };
@@ -128,7 +129,7 @@ export function toggleDestination(
   editing: boolean,
 ): Trip {
   if (!editing) return trip;
-  // The Accommodation anchor can never be a selected Visit.
+  // The Accommodation can never be a selected Visit.
   if (isAccommodation(trip, destination.id)) return trip;
   const selected = trip.destinations.some(({ id }) => id === destination.id);
   if (!selected && !canSelect(destination)) return trip;
@@ -160,14 +161,14 @@ export function removeSelectedDestination(trip: Trip, id: string): Trip {
 
 function isAccommodationRef(value: unknown): value is AccommodationRef {
   if (!value || typeof value !== "object") return false;
-  const a = value as AccommodationRef;
+  const accommodation = value as AccommodationRef;
   return (
-    typeof a.id === "string" &&
-    a.id.length > 0 &&
-    typeof a.name === "string" &&
-    !!a.coordinates &&
-    Number.isFinite(a.coordinates.latitude) &&
-    Number.isFinite(a.coordinates.longitude)
+    typeof accommodation.id === "string" &&
+    accommodation.id.length > 0 &&
+    typeof accommodation.name === "string" &&
+    !!accommodation.coordinates &&
+    Number.isFinite(accommodation.coordinates.latitude) &&
+    Number.isFinite(accommodation.coordinates.longitude)
   );
 }
 
@@ -211,7 +212,7 @@ function isTrip(value: unknown): value is Trip {
         ["Open", "Temporarily closed"].includes(d.operationalStatus),
     ) &&
     new Set(t.destinations.map((d) => d.id)).size === t.destinations.length &&
-    // The Accommodation anchor is never also a selected Visit.
+    // The Accommodation is never also a selected Visit.
     !t.destinations.some((d) => d.id === t.accommodation?.id)
   );
 }

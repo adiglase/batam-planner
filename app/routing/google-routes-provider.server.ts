@@ -9,6 +9,37 @@ const GOOGLE_TRAVEL_MODES = {
   walking: "WALK",
 } as const;
 
+function decodePolyline(value: unknown) {
+  if (typeof value !== "string" || value.length === 0) return null;
+  const points: Array<{ latitude: number; longitude: number }> = [];
+  let index = 0;
+  let latitude = 0;
+  let longitude = 0;
+  try {
+    while (index < value.length) {
+      const deltas: number[] = [];
+      for (let coordinate = 0; coordinate < 2; coordinate += 1) {
+        let result = 0;
+        let shift = 0;
+        let chunk: number;
+        do {
+          chunk = value.charCodeAt(index++) - 63;
+          if (chunk < 0 || index > value.length) return null;
+          result |= (chunk & 0x1f) << shift;
+          shift += 5;
+        } while (chunk >= 0x20);
+        deltas.push(result & 1 ? ~(result >> 1) : result >> 1);
+      }
+      latitude += deltas[0];
+      longitude += deltas[1];
+      points.push({ latitude: latitude / 1e5, longitude: longitude / 1e5 });
+    }
+  } catch {
+    return null;
+  }
+  return points.length > 0 ? points : null;
+}
+
 function durationSeconds(value: unknown): number | null {
   if (typeof value !== "string") return null;
   const match = /^(\d+(?:\.\d+)?)s$/.exec(value);
@@ -38,7 +69,8 @@ export function createGoogleRoutesProvider(
           headers: {
             "Content-Type": "application/json",
             "X-Goog-Api-Key": apiKey,
-            "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
+            "X-Goog-FieldMask":
+              "routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline",
           },
           body: JSON.stringify(body),
         });
@@ -54,11 +86,16 @@ export function createGoogleRoutesProvider(
         const parsedDuration = durationSeconds(
           (route as { duration?: unknown }).duration,
         );
+        const geometry = decodePolyline(
+          (route as { polyline?: { encodedPolyline?: unknown } }).polyline
+            ?.encodedPolyline,
+        );
         if (
           typeof distanceMeters !== "number" ||
           !Number.isFinite(distanceMeters) ||
           distanceMeters < 0 ||
-          parsedDuration === null
+          parsedDuration === null ||
+          geometry === null
         ) {
           return null;
         }
@@ -66,7 +103,7 @@ export function createGoogleRoutesProvider(
           distanceMeters,
           durationSeconds: parsedDuration,
           mode: input.mode,
-          geometry: [],
+          geometry,
         };
       } catch {
         return null;

@@ -74,6 +74,7 @@ import {
 } from "~/discovery/discovery-session";
 import { BATAM_MAP_CENTER } from "~/geography/coordinates";
 import { ConfiguredMap } from "~/map/configured-map";
+import { ItinerarySurface } from "~/itineraries/itinerary-surface";
 import { isAccommodation } from "~/trips/trip-repository";
 import { browserRoutingProvider } from "~/routing/browser-routing-provider";
 import type { RoutingProvider } from "~/routing/routing-provider";
@@ -710,11 +711,15 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             </ScrollArea>
           </TabsContent>
           <TabsContent className="surface-content" value="itinerary">
-            <EmptySurface
-              eyebrow="Your Itinerary"
-              title="Nothing scheduled yet"
-              body="A complete Itinerary will appear here after you create a Trip and explicitly build it."
-            />
+            <ScrollArea className="surface-scroll">
+              <div className="surface-layout">
+                <ItinerarySurface
+                  trips={trips}
+                  routingProvider={browserRoutingProvider}
+                  onReviewTrip={() => setActiveSurface("trip")}
+                />
+              </div>
+            </ScrollArea>
           </TabsContent>
         </Tabs>
       </div>
@@ -1199,31 +1204,5 @@ function DiscoveryFilterFields({
         </FieldSet>
       )}
     </div>
-  );
-}
-
-function EmptySurface({
-  eyebrow,
-  title,
-  body,
-}: {
-  eyebrow: string;
-  title: string;
-  body: string;
-}) {
-  return (
-    <ScrollArea className="surface-scroll">
-      <div className="empty-surface">
-        <Empty>
-          <EmptyHeader>
-            <Badge variant="outline">{eyebrow}</Badge>
-            <EmptyTitle>
-              <h1>{title}</h1>
-            </EmptyTitle>
-            <EmptyDescription>{body}</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      </div>
-    </ScrollArea>
   );
 }

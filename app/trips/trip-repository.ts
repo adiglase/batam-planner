@@ -1,4 +1,5 @@
 import type { Destination } from "~/destinations/destination";
+import type { SameDayItinerary } from "~/itineraries/same-day-planner";
 import type { TransportMode } from "~/routing/routing-provider";
 
 export type SelectedDestination = Pick<
@@ -48,7 +49,7 @@ export type Trip = {
   visitDurationOverrides: Record<string, number>;
   destinationOrder: string[] | null;
   revision: number;
-  itinerary: { inputRevision: number; [key: string]: unknown } | null;
+  itinerary: SameDayItinerary | null;
 };
 export type TripCollection = { trips: Trip[]; activeTripId: string | null };
 export const TRIPS_KEY = "batam-planner:trips:v1";
@@ -64,6 +65,15 @@ export const tripStatus = (trip: Trip) =>
       : "Needs rebuilding";
 export const reopeningSurface = (trip: Trip) =>
   trip.itinerary ? ("itinerary" as const) : ("trip" as const);
+export function storeBuiltItinerary(
+  trip: Trip,
+  itinerary: SameDayItinerary,
+): Trip {
+  // A Build result is stale if inputs changed while routing was in flight.
+  if (itinerary.inputRevision !== trip.revision) return trip;
+  return { ...trip, itinerary };
+}
+
 export function createTrip(id: string): Trip {
   return {
     id,
@@ -326,6 +336,56 @@ function isAccommodationRef(value: unknown): value is AccommodationRef {
   );
 }
 
+function isSameDayItinerary(value: unknown): value is SameDayItinerary {
+  if (!value || typeof value !== "object") return false;
+  const itinerary = value as SameDayItinerary;
+  if (
+    !Number.isInteger(itinerary.inputRevision) ||
+    typeof itinerary.date !== "string" ||
+    !Number.isFinite(itinerary.startSeconds) ||
+    !Number.isFinite(itinerary.endSeconds) ||
+    !Array.isArray(itinerary.entries)
+  ) {
+    return false;
+  }
+  return itinerary.entries.every((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    if (
+      !Number.isFinite(entry.startSeconds) ||
+      !Number.isFinite(entry.endSeconds) ||
+      entry.endSeconds < entry.startSeconds
+    ) {
+      return false;
+    }
+    if (entry.kind === "visit") {
+      return (
+        typeof entry.destinationId === "string" &&
+        typeof entry.destinationName === "string" &&
+        Number.isInteger(entry.durationMinutes) &&
+        entry.durationMinutes > 0
+      );
+    }
+    return (
+      entry.kind === "travel" &&
+      !!entry.origin &&
+      typeof entry.origin.name === "string" &&
+      !!entry.destination &&
+      typeof entry.destination.name === "string" &&
+      !!entry.estimate &&
+      Number.isFinite(entry.estimate.distanceMeters) &&
+      Number.isFinite(entry.estimate.durationSeconds) &&
+      TRANSPORT_MODES.includes(entry.estimate.mode) &&
+      Array.isArray(entry.estimate.geometry) &&
+      entry.estimate.geometry.every(
+        (point) =>
+          point &&
+          Number.isFinite(point.latitude) &&
+          Number.isFinite(point.longitude),
+      )
+    );
+  });
+}
+
 function isBoundary(value: unknown): value is TripBoundary {
   if (!value || typeof value !== "object") return false;
   const boundary = value as TripBoundary;
@@ -384,10 +444,7 @@ function isTrip(value: unknown): value is Trip {
         t.destinationOrder.every((id) =>
           t.destinations.some((destination) => destination.id === id),
         ))) &&
-    (t.itinerary === null ||
-      (!!t.itinerary &&
-        typeof t.itinerary === "object" &&
-        Number.isInteger(t.itinerary.inputRevision))) &&
+    (t.itinerary === null || isSameDayItinerary(t.itinerary)) &&
     Array.isArray(t.destinations) &&
     t.destinations.every(
       (d) =>

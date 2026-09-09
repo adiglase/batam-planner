@@ -50,10 +50,13 @@ const accommodation: Destination = {
 function itinerary(inputRevision: number) {
   return {
     inputRevision,
-    date: "2026-06-01",
-    startSeconds: 32_400,
-    endSeconds: 32_400,
-    entries: [],
+    days: [{
+      date: "2026-06-01",
+      startSeconds: 32_400,
+      endSeconds: 32_400,
+      entries: [],
+    }],
+    warnings: [],
   };
 }
 function memoryStorage() {
@@ -105,6 +108,54 @@ describe("browser-local Trips", () => {
     const built = itinerary(trip.revision);
     expect(storeBuiltItinerary(trip, built).itinerary).toEqual(built);
     expect(storeBuiltItinerary({ ...trip, revision: 1 }, built).itinerary).toBeNull();
+  });
+  it("persists Itinerary warnings across a fresh repository", () => {
+    const storage = memoryStorage();
+    const repository = new TripRepository(() => storage);
+    repository.load();
+    const warning = {
+      code: "missing-accommodation" as const,
+      message: "Overnight repositioning is omitted.",
+    };
+    const trip = {
+      ...createTrip("warned"),
+      itinerary: { ...itinerary(0), warnings: [warning] },
+    };
+    expect(repository.save({ trips: [trip], activeTripId: trip.id })).toBe(true);
+    expect(
+      new TripRepository(() => storage).load().collection.trips[0].itinerary?.warnings,
+    ).toEqual([warning]);
+  });
+  it("loads and normalizes a stored same-day Itinerary from the earlier v1 shape", () => {
+    const storage = memoryStorage();
+    const legacyItinerary = {
+      inputRevision: 0,
+      date: "2026-06-01",
+      startSeconds: 32_400,
+      endSeconds: 32_400,
+      entries: [],
+    };
+    storage.setItem(
+      TRIPS_KEY,
+      JSON.stringify({
+        version: 1,
+        trips: [{ ...createTrip("legacy-itinerary"), itinerary: legacyItinerary }],
+        activeTripId: "legacy-itinerary",
+      }),
+    );
+
+    const loaded = new TripRepository(() => storage).load();
+    expect(loaded.failed).toBe(false);
+    expect(loaded.collection.trips[0].itinerary).toEqual({
+      inputRevision: 0,
+      days: [{
+        date: "2026-06-01",
+        startSeconds: 32_400,
+        endSeconds: 32_400,
+        entries: [],
+      }],
+      warnings: [],
+    });
   });
   it("preserves the last Itinerary and restoration surface after a planning edit", () => {
     const trip = {

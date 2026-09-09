@@ -41,6 +41,7 @@ function routing(seconds = 600): RoutingProvider & { estimateTravel: ReturnType<
       durationSeconds: seconds,
       geometry: [origin, destination],
       mode,
+      warnings: [],
     })),
   };
 }

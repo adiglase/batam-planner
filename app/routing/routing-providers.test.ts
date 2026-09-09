@@ -35,6 +35,13 @@ describe("Google Routes provider", () => {
         { latitude: 40.7, longitude: -120.95 },
         { latitude: 43.252, longitude: -126.453 },
       ],
+      warnings: [
+        {
+          code: "two-wheel-route-limitations",
+          message:
+            "Motorcycle directions are in beta and may be missing suitable two-wheel routes.",
+        },
+      ],
     });
     expect(fetcher).toHaveBeenCalledOnce();
     const [url, init] = fetcher.mock.calls[0];
@@ -73,16 +80,51 @@ describe("Google Routes provider", () => {
         ],
       }),
     );
-    await createGoogleRoutesProvider("server-key", fetcher).estimateTravel({
+    const estimate = await createGoogleRoutesProvider(
+      "server-key",
+      fetcher,
+    ).estimateTravel({
       ...input,
       mode: "walking",
     });
 
+    expect(estimate?.warnings).toEqual([
+      {
+        code: "walking-route-limitations",
+        message:
+          "Walking directions are in beta and may be missing clear sidewalks or pedestrian paths.",
+      },
+    ]);
     const [, init] = fetcher.mock.calls[0];
     expect(JSON.parse(String(init?.body))).toEqual({
       origin: { location: { latLng: input.origin } },
       destination: { location: { latLng: input.destination } },
       travelMode: "WALK",
+    });
+  });
+
+  it("maps car behavior to a traffic-unaware drive request without a route warning", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        routes: [
+          {
+            distanceMeters: 900,
+            duration: "720s",
+            polyline: { encodedPolyline: "??" },
+          },
+        ],
+      }),
+    );
+    const estimate = await createGoogleRoutesProvider(
+      "server-key",
+      fetcher,
+    ).estimateTravel({ ...input, mode: "car" });
+
+    expect(estimate?.warnings).toEqual([]);
+    const [, init] = fetcher.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      travelMode: "DRIVE",
+      routingPreference: "TRAFFIC_UNAWARE",
     });
   });
 });
@@ -94,6 +136,12 @@ describe("browser routing provider", () => {
       durationSeconds: 1740,
       mode: "motorcycle" as const,
       geometry: [],
+      warnings: [
+        {
+          code: "two-wheel-route-limitations",
+          message: "Translated provider caution",
+        },
+      ],
     };
     const fetcher = vi
       .fn<typeof fetch>()

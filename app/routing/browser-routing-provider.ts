@@ -2,6 +2,20 @@ import type { RoutingProvider, TravelEstimate } from "./routing-provider";
 
 type TravelEstimateResponse = { estimate: TravelEstimate | null };
 
+function isTravelWarnings(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (warning) =>
+        !!warning &&
+        typeof warning === "object" &&
+        (warning.code === "walking-route-limitations" ||
+          warning.code === "two-wheel-route-limitations") &&
+        typeof warning.message === "string",
+    )
+  );
+}
+
 function isTravelEstimateResponse(
   value: unknown,
   requestedMode: TravelEstimate["mode"],
@@ -18,7 +32,8 @@ function isTravelEstimateResponse(
     Number.isFinite(estimate.durationSeconds) &&
     estimate.durationSeconds >= 0 &&
     estimate.mode === requestedMode &&
-    Array.isArray(estimate.geometry)
+    Array.isArray(estimate.geometry) &&
+    isTravelWarnings(estimate.warnings)
   );
 }
 

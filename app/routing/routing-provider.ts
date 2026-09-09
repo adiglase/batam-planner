@@ -2,11 +2,18 @@ import type { Coordinates } from "~/geography/coordinates";
 
 export type TransportMode = "car" | "motorcycle" | "walking";
 
+export type TravelWarning = {
+  code: "walking-route-limitations" | "two-wheel-route-limitations";
+  message: string;
+};
+
 export type TravelEstimate = {
   distanceMeters: number;
   durationSeconds: number;
   mode: TransportMode;
   geometry: Coordinates[];
+  /** Product-facing warnings. Provider enums and response types stay in adapters. */
+  warnings: TravelWarning[];
 };
 
 export interface RoutingProvider {

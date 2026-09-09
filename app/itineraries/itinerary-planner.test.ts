@@ -56,6 +56,7 @@ function routing(durationSeconds = 600): RoutingProvider & {
       durationSeconds,
       mode,
       geometry: [origin, destination],
+      warnings: [],
     })),
   };
 }
@@ -87,6 +88,7 @@ describe("one-day Itinerary Build", () => {
       durationSeconds: 600,
       mode: "car",
       geometry: [travels[0].origin.coordinates, travels[0].destination.coordinates],
+      warnings: [],
     });
   });
 
@@ -102,7 +104,7 @@ describe("one-day Itinerary Build", () => {
         origin.latitude === beach.coordinates.latitude &&
         destination.latitude === temple.coordinates.latitude
           ? null
-          : { distanceMeters: 1, durationSeconds: 1, geometry: [origin, destination], mode },
+          : { distanceMeters: 1, durationSeconds: 1, geometry: [origin, destination], mode, warnings: [] },
     };
     const trip = useCurrentDestinationOrder(completeTrip());
     await expect(buildSameDayItinerary(trip, provider)).resolves.toEqual({
@@ -136,6 +138,7 @@ describe("one-day Itinerary Build", () => {
           durations.get(`${origin.latitude}:${destination.latitude}`) ?? 1_000,
         geometry: [origin, destination],
         mode,
+        warnings: [],
       }),
     };
     const result = await buildSameDayItinerary(completeTrip(), provider);
@@ -149,36 +152,93 @@ describe("one-day Itinerary Build", () => {
     ).toEqual(["temple", "beach"]);
   });
 
-  it("walks qualifying legs and falls back to Primary transport", async () => {
-    const trip = {
-      ...completeTrip(),
-      destinations: [completeTrip().destinations[0]],
-      destinationOrder: [beach.id],
-      shortWalkMinutes: 5 as const,
-    };
-    let walkingRequest = 0;
-    const provider: RoutingProvider = {
-      estimateTravel: async ({ origin, destination, mode }) => {
-        if (mode === "walking") walkingRequest += 1;
-        return {
-          distanceMeters: 1,
-          durationSeconds:
-            mode === "walking" ? (walkingRequest === 1 ? 300 : 301) : 60,
-          geometry: [origin, destination],
-          mode,
-        };
-      },
-    };
-    const result = await buildSameDayItinerary(trip, provider);
+  it.each([5, 10, 15] as const)(
+    "walks only legs within the %i-minute tolerance",
+    async (shortWalkMinutes) => {
+      const complete = completeTrip();
+      const trip = {
+        ...complete,
+        destinations: [complete.destinations[0]],
+        destinationOrder: [beach.id],
+        shortWalkMinutes,
+      };
+      let walkingRequest = 0;
+      const provider: RoutingProvider = {
+        estimateTravel: async ({ origin, destination, mode }) => {
+          if (mode === "walking") walkingRequest += 1;
+          return {
+            distanceMeters: 1,
+            durationSeconds:
+              mode === "walking"
+                ? walkingRequest === 1
+                  ? shortWalkMinutes * 60
+                  : shortWalkMinutes * 60 + 1
+                : 60,
+            geometry: [origin, destination],
+            mode,
+            warnings: [],
+          };
+        },
+      };
+      const result = await buildSameDayItinerary(trip, provider);
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(
-      result.itinerary.days[0].entries
-        .filter((entry) => entry.kind === "travel")
-        .map((entry) => entry.estimate.mode),
-    ).toEqual(["walking", "car"]);
-  });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(
+        result.itinerary.days[0].entries
+          .filter((entry) => entry.kind === "travel")
+          .map((entry) => entry.estimate.mode),
+      ).toEqual(["walking", "car"]);
+    },
+  );
+
+  it.each(["car", "motorcycle", "walking"] as const)(
+    "requests and records %s Primary transport without short-walk substitution",
+    async (mode) => {
+      const complete = completeTrip();
+      const trip = {
+        ...complete,
+        destinations: [complete.destinations[0]],
+        destinationOrder: [beach.id],
+        transportMode: mode,
+        shortWalkMinutes: 0 as const,
+      };
+      const provider = routing();
+      const result = await buildSameDayItinerary(trip, provider);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(provider.estimateTravel.mock.calls.every(([input]) => input.mode === mode)).toBe(true);
+      expect(
+        result.itinerary.days[0].entries
+          .filter((entry) => entry.kind === "travel")
+          .map((entry) => entry.estimate.mode),
+      ).toEqual([mode, mode]);
+    },
+  );
+
+  it.each(["car", "motorcycle", "walking"] as const)(
+    "does not substitute another mode when required %s Travel is unavailable",
+    async (mode) => {
+      const complete = completeTrip();
+      const trip = {
+        ...complete,
+        destinations: [complete.destinations[0]],
+        destinationOrder: [beach.id],
+        transportMode: mode,
+        shortWalkMinutes: 0 as const,
+      };
+      const provider: RoutingProvider & { estimateTravel: ReturnType<typeof vi.fn> } = {
+        estimateTravel: vi.fn(async () => null),
+      };
+
+      await expect(buildSameDayItinerary(trip, provider)).resolves.toMatchObject({
+        ok: false,
+        code: "unavailable-route",
+      });
+      expect(provider.estimateTravel.mock.calls.every(([input]) => input.mode === mode)).toBe(true);
+    },
+  );
 
   it("rejects a Destination whose current Published status is no longer eligible", async () => {
     const provider = routing();

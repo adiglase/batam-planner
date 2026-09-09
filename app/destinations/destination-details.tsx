@@ -302,6 +302,13 @@ function TravelFromAccommodation({
                 <p className="destination-fact-note">
                   Traffic-unaware estimate · Non-live · Not guaranteed.
                 </p>
+                {travelStatus.estimate.warnings.map((warning) => (
+                  <Alert key={warning.code}>
+                    <TriangleAlertIcon aria-hidden="true" />
+                    <AlertTitle>Travel direction caution</AlertTitle>
+                    <AlertDescription>{warning.message}</AlertDescription>
+                  </Alert>
+                ))}
               </>
             )}
             {travelStatus.state === "unavailable" && (

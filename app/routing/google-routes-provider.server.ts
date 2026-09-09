@@ -1,4 +1,8 @@
-import type { RoutingProvider } from "./routing-provider";
+import type {
+  RoutingProvider,
+  TransportMode,
+  TravelWarning,
+} from "./routing-provider";
 
 const GOOGLE_ROUTES_URL =
   "https://routes.googleapis.com/directions/v2:computeRoutes";
@@ -8,6 +12,19 @@ const GOOGLE_TRAVEL_MODES = {
   motorcycle: "TWO_WHEELER",
   walking: "WALK",
 } as const;
+
+const REQUIRED_ROUTE_WARNINGS: Partial<Record<TransportMode, TravelWarning>> = {
+  walking: {
+    code: "walking-route-limitations",
+    message:
+      "Walking directions are in beta and may be missing clear sidewalks or pedestrian paths.",
+  },
+  motorcycle: {
+    code: "two-wheel-route-limitations",
+    message:
+      "Motorcycle directions are in beta and may be missing suitable two-wheel routes.",
+  },
+};
 
 function decodePolyline(value: unknown) {
   if (typeof value !== "string" || value.length === 0) return null;
@@ -99,11 +116,13 @@ export function createGoogleRoutesProvider(
         ) {
           return null;
         }
+        const requiredWarning = REQUIRED_ROUTE_WARNINGS[input.mode];
         return {
           distanceMeters,
           durationSeconds: parsedDuration,
           mode: input.mode,
           geometry,
+          warnings: requiredWarning ? [requiredWarning] : [],
         };
       } catch {
         return null;

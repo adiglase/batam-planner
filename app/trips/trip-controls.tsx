@@ -399,7 +399,7 @@ export function TripSurface({
         <CardHeader>
           <CardTitle>Primary transport</CardTitle>
           <CardDescription>
-            Used for the Accommodation travel estimate.
+            Used for Travel estimates and every Itinerary leg unless a short walk fits your tolerance.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-5">

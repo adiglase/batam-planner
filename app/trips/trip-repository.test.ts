@@ -4,12 +4,21 @@ import {
   canSetAsAccommodation,
   clearAccommodation,
   createTrip,
+  effectiveVisitMinutes,
+  moveDestination,
+  optimizeDestinationOrder,
   reopeningSurface,
   removeSelectedDestination,
   setAccommodation,
+  setBoundary,
+  setDailyWindow,
+  setShortWalkMinutes,
   setTransportMode,
+  setVisitDuration,
   toggleDestination,
+  tripDayDates,
   tripStatus,
+  useCurrentDestinationOrder,
   TripRepository,
   TRIPS_KEY,
 } from "./trip-repository";
@@ -151,6 +160,97 @@ describe("browser-local Trips", () => {
     const trip = toggleDestination(createTrip("trip"), destination, true);
     expect(full.save({ trips: [trip], activeTripId: trip.id })).toBe(false);
     expect(trip.destinations).toHaveLength(1);
+  });
+});
+
+describe("progressive Trip constraints", () => {
+  it("creates one through four Batam days with independent default Daily windows", () => {
+    let trip = setBoundary(createTrip("trip"), "arrival", "date", "2026-06-01");
+    trip = setBoundary(trip, "departure", "date", "2026-06-04");
+    expect(tripDayDates(trip)).toEqual([
+      "2026-06-01",
+      "2026-06-02",
+      "2026-06-03",
+      "2026-06-04",
+    ]);
+    expect(trip.dailyWindows).toEqual(
+      tripDayDates(trip).map((date) => ({ date, start: "09:00", end: "21:00" })),
+    );
+    const changed = setDailyWindow(trip, "2026-06-02", "start", "10:30");
+    expect(changed.dailyWindows[0].start).toBe("09:00");
+    expect(changed.dailyWindows[1].start).toBe("10:30");
+
+    const tooLong = setBoundary(changed, "departure", "date", "2026-06-05");
+    expect(tripDayDates(tooLong)).toEqual([]);
+  });
+
+  it("records both ferry boundaries, Primary transport, and short-walk tolerance", () => {
+    let trip = createTrip("trip");
+    trip = setBoundary(trip, "arrival", "terminal", "Batam Centre");
+    trip = setBoundary(trip, "arrival", "time", "08:45");
+    trip = setBoundary(trip, "departure", "terminal", "Harbour Bay");
+    trip = setBoundary(trip, "departure", "time", "19:30");
+    trip = setTransportMode(trip, "car", true);
+    trip = setShortWalkMinutes(trip, 10);
+    expect(trip.boundaries.arrival).toMatchObject({ terminal: "Batam Centre", time: "08:45" });
+    expect(trip.boundaries.departure).toMatchObject({ terminal: "Harbour Bay", time: "19:30" });
+    expect(trip.transportMode).toBe("car");
+    expect(trip.shortWalkMinutes).toBe(10);
+  });
+
+  it("uses Typical visit duration until overridden and removes stale overrides", () => {
+    const selected = toggleDestination(createTrip("trip"), destination, true);
+    expect(effectiveVisitMinutes(selected, destination.id)).toBe(60);
+    const overridden = setVisitDuration(selected, destination.id, 95);
+    expect(effectiveVisitMinutes(overridden, destination.id)).toBe(95);
+    const reset = setVisitDuration(overridden, destination.id, null);
+    expect(effectiveVisitMinutes(reset, destination.id)).toBe(60);
+    expect(removeSelectedDestination(overridden, destination.id).visitDurationOverrides).toEqual({});
+  });
+
+  it("makes manual Destination order explicit and Optimize order removes it", () => {
+    const second = { ...destination, id: "spa", name: "Spa" };
+    let trip = toggleDestination(createTrip("trip"), destination, true);
+    trip = toggleDestination(trip, second, true);
+    const currentOrder = useCurrentDestinationOrder(trip);
+    expect(currentOrder.destinationOrder).toEqual([destination.id, second.id]);
+    const ordered = moveDestination(currentOrder, second.id, -1);
+    expect(ordered.destinationOrder).toEqual([second.id, destination.id]);
+    expect(optimizeDestinationOrder(ordered).destinationOrder).toBeNull();
+  });
+
+  it("enforces the ten-Destination selection limit without changing revision", () => {
+    let trip = createTrip("trip");
+    for (let index = 0; index < 10; index += 1) {
+      trip = toggleDestination(
+        trip,
+        { ...destination, id: `destination-${index}`, name: `Destination ${index}` },
+        true,
+      );
+    }
+    const unchanged = toggleDestination(
+      trip,
+      { ...destination, id: "eleventh", name: "Eleventh" },
+      true,
+    );
+    expect(unchanged).toBe(trip);
+    expect(unchanged.destinations).toHaveLength(10);
+  });
+
+  it("persists all progressive constraints without creating an Itinerary", () => {
+    const storage = memoryStorage();
+    const repository = new TripRepository(() => storage);
+    repository.load();
+    let trip = toggleDestination(createTrip("trip"), destination, true);
+    trip = setBoundary(trip, "arrival", "date", "2026-07-01");
+    trip = setBoundary(trip, "departure", "date", "2026-07-02");
+    trip = setDailyWindow(trip, "2026-07-02", "end", "18:00");
+    trip = setVisitDuration(trip, destination.id, 75);
+    trip = setShortWalkMinutes(trip, 5);
+    repository.save({ trips: [trip], activeTripId: trip.id });
+    const reopened = new TripRepository(() => storage).load().collection.trips[0];
+    expect(reopened).toEqual(trip);
+    expect(reopened.itinerary).toBeNull();
   });
 });
 

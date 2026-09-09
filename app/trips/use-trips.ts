@@ -4,15 +4,25 @@ import {
   clearAccommodation,
   createTrip,
   emptyCollection,
+  moveDestination,
+  optimizeDestinationOrder,
   removeSelectedDestination,
   setAccommodation,
+  setBoundary,
+  setDailyWindow,
+  setShortWalkMinutes,
   setTransportMode,
+  setVisitDuration,
   toggleDestination,
   TripRepository,
+  useCurrentDestinationOrder,
 } from "./trip-repository";
 import type {
+  BoundaryKind,
   PrimaryTransportMode,
+  ShortWalkMinutes,
   Trip,
+  TripBoundary,
   TripCollection,
 } from "./trip-repository";
 
@@ -88,6 +98,27 @@ export function useTrips() {
     },
     setTransportMode(mode: PrimaryTransportMode) {
       update((trip) => setTransportMode(trip, mode, editing));
+    },
+    setBoundary(kind: BoundaryKind, field: keyof TripBoundary, value: string) {
+      update((trip) => setBoundary(trip, kind, field, value));
+    },
+    setShortWalkMinutes(minutes: ShortWalkMinutes) {
+      update((trip) => setShortWalkMinutes(trip, minutes));
+    },
+    setDailyWindow(date: string, field: "start" | "end", value: string) {
+      update((trip) => setDailyWindow(trip, date, field, value));
+    },
+    setVisitDuration(id: string, minutes: number | null) {
+      update((trip) => setVisitDuration(trip, id, minutes));
+    },
+    moveDestination(id: string, offset: -1 | 1) {
+      update((trip) => moveDestination(trip, id, offset));
+    },
+    useCurrentDestinationOrder() {
+      update(useCurrentDestinationOrder);
+    },
+    optimizeDestinationOrder() {
+      update(optimizeDestinationOrder);
     },
     removeDestination(id: string) {
       update((trip) => removeSelectedDestination(trip, id));

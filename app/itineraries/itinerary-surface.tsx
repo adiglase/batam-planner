@@ -4,6 +4,7 @@ import {
   ArrowRightIcon,
   CalendarDaysIcon,
   MapPinIcon,
+  SquareIcon,
   TriangleAlertIcon,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
@@ -38,6 +39,7 @@ import {
   buildItinerary,
   formatItineraryTime,
 } from "./itinerary-planner";
+import type { BuildFailure } from "./itinerary-planner";
 
 export function ItinerarySurface({
   trips,
@@ -48,10 +50,10 @@ export function ItinerarySurface({
   trips: TripControls;
   routingProvider: RoutingProvider;
   publishedDestinations: readonly Destination[];
-  onReviewTrip: () => void;
+  onReviewTrip: (targetId?: string) => void;
 }) {
   const [building, setBuilding] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<BuildFailure | string | null>(null);
   const [selectedDay, setSelectedDay] = useState(0);
   const trip = trips.activeTrip;
 
@@ -59,7 +61,7 @@ export function ItinerarySurface({
     setFailure(null);
     setBuilding(false);
     setSelectedDay(0);
-  }, [trip?.id, trip?.itinerary?.inputRevision]);
+  }, [trip?.id, trip?.revision, trip?.itinerary?.inputRevision]);
 
   if (!trip) {
     return (
@@ -86,7 +88,7 @@ export function ItinerarySurface({
         setFailure("Trip inputs changed during the Build. Review them and build again.");
       }
     } else {
-      setFailure(result.message);
+      setFailure(result);
     }
     setBuilding(false);
   }
@@ -97,11 +99,7 @@ export function ItinerarySurface({
     return (
       <div className="flex flex-col gap-4">
         {failure && (
-          <Alert variant="destructive">
-            <AlertCircleIcon aria-hidden="true" />
-            <AlertTitle>No Itinerary was produced</AlertTitle>
-            <AlertDescription>{failure}</AlertDescription>
-          </Alert>
+          <BuildFailureAlert failure={failure} onReviewTrip={onReviewTrip} />
         )}
         <Empty className="border bg-card">
           <EmptyHeader>
@@ -116,7 +114,7 @@ export function ItinerarySurface({
               {building && <Spinner data-icon="inline-start" />}
               {building ? "Building…" : "Build itinerary"}
             </Button>
-            <Button variant="outline" onClick={onReviewTrip}>
+            <Button variant="outline" onClick={() => onReviewTrip()}>
               Review Trip inputs
               <ArrowRightIcon data-icon="inline-end" />
             </Button>
@@ -146,11 +144,7 @@ export function ItinerarySurface({
         </Alert>
       )}
       {failure && (
-        <Alert variant="destructive">
-          <AlertCircleIcon aria-hidden="true" />
-          <AlertTitle>Build failed</AlertTitle>
-          <AlertDescription>{failure}</AlertDescription>
-        </Alert>
+        <BuildFailureAlert failure={failure} onReviewTrip={onReviewTrip} />
       )}
       {itinerary.warnings.map((warning) => (
         <Alert key={warning.code}>
@@ -230,10 +224,79 @@ export function ItinerarySurface({
               ? "Rebuild itinerary"
               : "Build again"}
         </Button>
-        <Button variant="outline" onClick={onReviewTrip}>
+        <Button variant="outline" onClick={() => onReviewTrip()}>
           Review Trip inputs
         </Button>
       </div>
     </div>
+  );
+}
+
+function BuildFailureAlert({
+  failure,
+  onReviewTrip,
+}: {
+  failure: BuildFailure | string;
+  onReviewTrip: (targetId?: string) => void;
+}) {
+  if (typeof failure === "string") {
+    return (
+      <Alert variant="destructive">
+        <AlertCircleIcon aria-hidden="true" />
+        <AlertTitle>No Itinerary was produced</AlertTitle>
+        <AlertDescription>{failure}</AlertDescription>
+      </Alert>
+    );
+  }
+
+  return (
+    <Alert variant="destructive">
+      <AlertCircleIcon aria-hidden="true" />
+      <AlertTitle>
+        {failure.code === "missing-input"
+          ? "Complete your Trip before building"
+          : "No complete Itinerary fits"}
+      </AlertTitle>
+      <AlertDescription className="flex flex-col gap-3">
+        <p>{failure.message}</p>
+        {failure.requirements && failure.requirements.length > 0 && (
+          <ul className="flex flex-col gap-1" aria-label="Required Trip inputs">
+            {failure.requirements.map((requirement) => (
+              <li key={`${requirement.targetId}-${requirement.label}`}>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto justify-start px-0 text-left whitespace-normal"
+                  onClick={() => onReviewTrip(requirement.targetId)}
+                >
+                  <SquareIcon data-icon="inline-start" />
+                  {requirement.label}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {failure.suggestions.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <strong>Possible corrections</strong>
+            <ul className="flex flex-col items-start gap-1">
+              {failure.suggestions.map((suggestion) => (
+                <li key={`${suggestion.targetId}-${suggestion.label}`}>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="h-auto justify-start px-0 text-left whitespace-normal"
+                    onClick={() => onReviewTrip(suggestion.targetId)}
+                  >
+                    {suggestion.label}
+                    <ArrowRightIcon data-icon="inline-end" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </AlertDescription>
+    </Alert>
   );
 }

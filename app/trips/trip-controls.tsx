@@ -513,6 +513,7 @@ export function TripSurface({
                         <ArrowDownIcon data-icon="inline-start" />
                       </Button>
                       <Button
+                        id={`remove-destination-${destination.id}`}
                         variant="outline"
                         size="sm"
                         aria-label={`Remove ${destination.name} from Trip`}
@@ -582,7 +583,7 @@ export function TripSurface({
               )}
             </div>
           )}
-          <Button onClick={onDiscover}>
+          <Button id="choose-destinations" onClick={onDiscover}>
             {trips.editing
               ? "Choose Destinations"
               : "Edit trip & choose Destinations"}

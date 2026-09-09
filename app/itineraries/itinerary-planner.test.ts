@@ -108,10 +108,13 @@ describe("one-day Itinerary Build", () => {
           : { distanceMeters: 1, durationSeconds: 1, geometry: [origin, destination], mode, warnings: [] },
     };
     const trip = useCurrentDestinationOrder(completeTrip());
-    await expect(buildSameDayItinerary(trip, provider)).resolves.toEqual({
+    await expect(buildSameDayItinerary(trip, provider)).resolves.toMatchObject({
       ok: false,
       code: "unavailable-route",
-      message: "No complete Travel route connects every required terminal, Accommodation, and Destination anchor.",
+      message: "Travel from Beach to Temple is unavailable using car.",
+      suggestions: expect.arrayContaining([
+        expect.objectContaining({ label: "Choose different Primary transport" }),
+      ]),
     });
     expect(trip.itinerary).toBeNull();
   });
@@ -119,8 +122,85 @@ describe("one-day Itinerary Build", () => {
   it("rejects a complete route that exceeds the tighter Boundary or Daily window", async () => {
     const trip = setDailyWindow(completeTrip(), "2026-06-01", "end", "10:59");
     const result = await buildSameDayItinerary(trip, routing());
-    expect(result).toMatchObject({ ok: false, code: "insufficient-time" });
+    expect(result).toMatchObject({
+      ok: false,
+      code: "insufficient-time",
+      suggestions: expect.arrayContaining([
+        expect.objectContaining({ label: "Shorten a Visit" }),
+        expect.objectContaining({ label: "Widen a Daily window" }),
+      ]),
+    });
     expect(result).not.toHaveProperty("itinerary");
+  });
+
+  it("returns every missing requirement as a deterministic linked checklist", async () => {
+    const result = await buildSameDayItinerary(createTrip("empty"), routing());
+
+    expect(result).toEqual({
+      ok: false,
+      code: "missing-input",
+      message: "Complete these Trip inputs before building. Nothing has been changed.",
+      requirements: [
+        { label: "Choose at least one Destination", targetId: "choose-destinations" },
+        { label: "Choose an arrival ferry terminal", targetId: "arrival-terminal" },
+        { label: "Set the arrival date", targetId: "arrival-date" },
+        { label: "Set the arrival time", targetId: "arrival-time" },
+        { label: "Choose a departure ferry terminal", targetId: "departure-terminal" },
+        { label: "Set the departure date", targetId: "departure-date" },
+        { label: "Set the departure time", targetId: "departure-time" },
+        { label: "Choose Primary transport", targetId: "primary-transport-car" },
+      ],
+      suggestions: [],
+    });
+    expect(result).not.toHaveProperty("itinerary");
+  });
+
+  it("reports excess Destination count before other infeasible blockers", async () => {
+    const complete = completeTrip();
+    const destinations = Array.from({ length: 11 }, (_, index) => ({
+      ...complete.destinations[0],
+      id: `destination-${index}`,
+      name: `Destination ${index}`,
+    }));
+    const trip = {
+      ...complete,
+      destinations,
+      destinationOrder: null,
+      boundaries: {
+        ...complete.boundaries,
+        departure: { ...complete.boundaries.departure, date: "2026-06-05" },
+      },
+    };
+
+    const result = await buildSameDayItinerary(trip, routing(), destinations);
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: "excess-destination-count",
+      message: "11 Destinations are selected; a Trip supports at most 10.",
+    });
+    expect(result).not.toHaveProperty("itinerary");
+  });
+
+  it("builds the supported ten-Destination boundary", async () => {
+    const complete = completeTrip();
+    const destinations = Array.from({ length: 10 }, (_, index) => ({
+      ...complete.destinations[0],
+      id: `destination-${index}`,
+      name: `Destination ${index}`,
+      typicalVisitMinutes: 5,
+    }));
+    const trip = {
+      ...complete,
+      destinations,
+      destinationOrder: destinations.map(({ id }) => id),
+    };
+
+    const result = await buildSameDayItinerary(trip, routing(60), destinations);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.itinerary.days[0].entries.filter(({ kind }) => kind === "visit")).toHaveLength(10);
   });
 
   it("optimizes Travel duration", async () => {

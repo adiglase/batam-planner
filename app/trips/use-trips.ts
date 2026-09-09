@@ -13,10 +13,12 @@ import {
   setShortWalkMinutes,
   setTransportMode,
   setVisitDuration,
+  storeBuiltItinerary,
   toggleDestination,
   TripRepository,
   useCurrentDestinationOrder,
 } from "./trip-repository";
+import type { SameDayItinerary } from "~/itineraries/same-day-planner";
 import type {
   BoundaryKind,
   PrimaryTransportMode,
@@ -122,6 +124,19 @@ export function useTrips() {
     },
     removeDestination(id: string) {
       update((trip) => removeSelectedDestination(trip, id));
+    },
+    storeBuiltItinerary(tripId: string, itinerary: SameDayItinerary) {
+      const existing = current.current.trips.find((trip) => trip.id === tripId);
+      if (!existing) return false;
+      const built = storeBuiltItinerary(existing, itinerary);
+      if (built === existing) return false;
+      commit({
+        ...current.current,
+        trips: current.current.trips.map((trip) =>
+          trip.id === tripId ? built : trip,
+        ),
+      });
+      return true;
     },
   };
 }

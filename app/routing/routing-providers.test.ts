@@ -11,7 +11,15 @@ const input = {
 describe("Google Routes provider", () => {
   it("requests one traffic-unaware route and returns its distance and duration", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
-      Response.json({ routes: [{ distanceMeters: 18500, duration: "1740s" }] }),
+      Response.json({
+        routes: [
+          {
+            distanceMeters: 18500,
+            duration: "1740s",
+            polyline: { encodedPolyline: "_p~iF~ps|U_ulLnnqC_mqNvxq`@" },
+          },
+        ],
+      }),
     );
     const estimate = await createGoogleRoutesProvider(
       "server-key",
@@ -22,7 +30,11 @@ describe("Google Routes provider", () => {
       distanceMeters: 18500,
       durationSeconds: 1740,
       mode: "motorcycle",
-      geometry: [],
+      geometry: [
+        { latitude: 38.5, longitude: -120.2 },
+        { latitude: 40.7, longitude: -120.95 },
+        { latitude: 43.252, longitude: -126.453 },
+      ],
     });
     expect(fetcher).toHaveBeenCalledOnce();
     const [url, init] = fetcher.mock.calls[0];
@@ -31,7 +43,8 @@ describe("Google Routes provider", () => {
     );
     expect(init?.headers).toMatchObject({
       "X-Goog-Api-Key": "server-key",
-      "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
+      "X-Goog-FieldMask":
+        "routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline",
     });
     expect(JSON.parse(String(init?.body))).toMatchObject({
       travelMode: "TWO_WHEELER",
@@ -50,7 +63,15 @@ describe("Google Routes provider", () => {
 
   it("omits the driving-only routing preference for walking", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
-      Response.json({ routes: [{ distanceMeters: 900, duration: "720s" }] }),
+      Response.json({
+        routes: [
+          {
+            distanceMeters: 900,
+            duration: "720s",
+            polyline: { encodedPolyline: "??" },
+          },
+        ],
+      }),
     );
     await createGoogleRoutesProvider("server-key", fetcher).estimateTravel({
       ...input,

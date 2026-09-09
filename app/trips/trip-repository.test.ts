@@ -15,6 +15,7 @@ import {
   setShortWalkMinutes,
   setTransportMode,
   setVisitDuration,
+  storeBuiltItinerary,
   toggleDestination,
   tripDayDates,
   tripStatus,
@@ -46,6 +47,15 @@ const accommodation: Destination = {
   operationalStatus: "Open",
   googleMapsUrl: "https://maps.google.com",
 };
+function itinerary(inputRevision: number) {
+  return {
+    inputRevision,
+    date: "2026-06-01",
+    startSeconds: 32_400,
+    endSeconds: 32_400,
+    entries: [],
+  };
+}
 function memoryStorage() {
   const values = new Map<string, string>();
   return {
@@ -90,10 +100,16 @@ describe("browser-local Trips", () => {
     expect(selected.destinations.map((d) => d.id)).toEqual([destination.id]);
     expect(toggleDestination(selected, closed, true).destinations).toEqual([]);
   });
+  it("stores a complete Build atomically and rejects a stale result", () => {
+    const trip = createTrip("trip");
+    const built = itinerary(trip.revision);
+    expect(storeBuiltItinerary(trip, built).itinerary).toEqual(built);
+    expect(storeBuiltItinerary({ ...trip, revision: 1 }, built).itinerary).toBeNull();
+  });
   it("preserves the last Itinerary and restoration surface after a planning edit", () => {
     const trip = {
       ...createTrip("trip"),
-      itinerary: { inputRevision: 0, visits: ["retained"] },
+      itinerary: itinerary(0),
     };
     expect(tripStatus(trip)).toBe("Itinerary ready");
     const changed = toggleDestination(trip, destination, true);
@@ -105,7 +121,7 @@ describe("browser-local Trips", () => {
   it("keeps an Itinerary ready when removing an unselected Destination", () => {
     const trip = {
       ...toggleDestination(createTrip("trip"), destination, true),
-      itinerary: { inputRevision: 1, visits: [destination.id] },
+      itinerary: itinerary(1),
     };
     const unchanged = removeSelectedDestination(trip, "not-selected");
     expect(tripStatus(unchanged)).toBe("Itinerary ready");
@@ -114,7 +130,7 @@ describe("browser-local Trips", () => {
   it("marks a real removal for rebuilding only once and preserves the Itinerary", () => {
     const trip = {
       ...toggleDestination(createTrip("trip"), destination, true),
-      itinerary: { inputRevision: 1, visits: [destination.id] },
+      itinerary: itinerary(1),
     };
     const removed = removeSelectedDestination(trip, destination.id);
     expect(removed.destinations).toEqual([]);
@@ -332,7 +348,7 @@ describe("Accommodation and Primary transport", () => {
   it("records Primary transport and marks the Itinerary for rebuilding", () => {
     const trip = {
       ...createTrip("trip"),
-      itinerary: { inputRevision: 0, visits: [] as string[] },
+      itinerary: itinerary(0),
     };
     expect(tripStatus(trip)).toBe("Itinerary ready");
     const withTransport = setTransportMode(trip, "car", true);

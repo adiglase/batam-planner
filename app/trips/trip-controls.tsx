@@ -15,6 +15,7 @@ import {
   EmptyContent,
 } from "~/components/ui/empty";
 import type { Destination } from "~/destinations/destination";
+import { FERRY_TERMINALS } from "~/geography/ferry-terminals";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import {
@@ -32,6 +33,14 @@ import {
   FieldSet,
 } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 import {
   RadioGroup,
   RadioGroupItem,
@@ -221,14 +230,25 @@ export function TripSurface({
                   <FieldGroup className="grid gap-3 sm:grid-cols-2">
                     <Field className="sm:col-span-2">
                       <FieldLabel htmlFor={`${kind}-terminal`}>Ferry terminal</FieldLabel>
-                      <Input
-                        id={`${kind}-terminal`}
-                        value={boundary.terminal}
-                        placeholder={`${label} ferry terminal`}
-                        onChange={(event) =>
-                          trips.setBoundary(kind, "terminal", event.target.value)
+                      <Select
+                        value={boundary.terminal || null}
+                        onValueChange={(value) =>
+                          trips.setBoundary(kind, "terminal", value ?? "")
                         }
-                      />
+                      >
+                        <SelectTrigger id={`${kind}-terminal`} className="w-full">
+                          <SelectValue placeholder={`Choose ${kind} ferry terminal`} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {FERRY_TERMINALS.map((terminal) => (
+                              <SelectItem key={terminal.name} value={terminal.name}>
+                                {terminal.name}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
                     </Field>
                     <Field>
                       <FieldLabel htmlFor={`${kind}-date`}>{label} date</FieldLabel>

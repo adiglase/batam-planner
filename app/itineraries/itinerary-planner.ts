@@ -122,13 +122,20 @@ type DayRoute = {
   anchors: ItineraryAnchor[];
   durationSeconds: number;
   travelSeconds: number;
+  firstVisitStartSeconds: number | null;
+  lastVisitEndSeconds: number | null;
+  leadingTravelSeconds: number;
+  trailingTravelSeconds: number;
   identity: string;
 };
 
 type Candidate = {
   days: DayRoute[];
   travelSeconds: number;
+  openSeconds: number;
   visitCompletion: number;
+  lastVisitEnd: number | null;
+  trailingTravelSeconds: number;
   identity: string;
 };
 
@@ -150,20 +157,50 @@ function fakeEstimate(
   };
 }
 
-function betterDayRoute(candidate: DayRoute, current: DayRoute | undefined) {
+function betterDayRoute(
+  candidate: DayRoute,
+  current: DayRoute | undefined,
+  finalVisits: boolean,
+) {
   return (
     !current ||
     candidate.travelSeconds < current.travelSeconds ||
     (candidate.travelSeconds === current.travelSeconds &&
-      candidate.identity < current.identity)
+      ((finalVisits &&
+        candidate.lastVisitEndSeconds! < current.lastVisitEndSeconds!) ||
+        ((!finalVisits ||
+          candidate.lastVisitEndSeconds === current.lastVisitEndSeconds) &&
+          candidate.identity < current.identity)))
   );
 }
 
-function betterCandidate(candidate: Candidate, current: Candidate | undefined) {
+function betterCandidate(
+  candidate: Candidate,
+  current: Candidate | undefined,
+  complete: boolean,
+) {
+  if (!current) return true;
+  if (candidate.travelSeconds !== current.travelSeconds) {
+    return candidate.travelSeconds < current.travelSeconds;
+  }
+  if (!complete) {
+    // A later Visit adds its start to this continuation score. Retaining the
+    // lowest score preserves the globally least open time without enumerating
+    // every earlier day allocation.
+    const continuationScore = (item: Candidate) =>
+      item.lastVisitEnd === null
+        ? 0
+        : item.openSeconds - item.lastVisitEnd - item.trailingTravelSeconds;
+    const candidateScore = continuationScore(candidate);
+    const currentScore = continuationScore(current);
+    return (
+      candidateScore < currentScore ||
+      (candidateScore === currentScore && candidate.identity < current.identity)
+    );
+  }
   return (
-    !current ||
-    candidate.travelSeconds < current.travelSeconds ||
-    (candidate.travelSeconds === current.travelSeconds &&
+    candidate.openSeconds < current.openSeconds ||
+    (candidate.openSeconds === current.openSeconds &&
       (candidate.visitCompletion < current.visitCompletion ||
         (candidate.visitCompletion === current.visitCompletion &&
           candidate.identity < current.identity)))
@@ -177,6 +214,7 @@ function routeForDay(
   durations: number[],
   estimates: Map<string, TravelEstimate>,
   manualOrder: boolean,
+  finalVisits: boolean,
   allowMissing: boolean,
   trip: Trip,
 ): DayRoute | null {
@@ -199,6 +237,10 @@ function routeForDay(
         anchors: [bounds.startAnchor, bounds.endAnchor],
         durationSeconds: direct.durationSeconds,
         travelSeconds: direct.durationSeconds,
+        firstVisitStartSeconds: null,
+        lastVisitEndSeconds: null,
+        leadingTravelSeconds: 0,
+        trailingTravelSeconds: 0,
         identity: "",
       };
     }
@@ -208,6 +250,10 @@ function routeForDay(
       anchors: [],
       durationSeconds: 0,
       travelSeconds: 0,
+      firstVisitStartSeconds: null,
+      lastVisitEndSeconds: null,
+      leadingTravelSeconds: 0,
+      trailingTravelSeconds: 0,
       identity: "",
     };
   }
@@ -230,13 +276,25 @@ function routeForDay(
       (total, item) => total + item.durationSeconds,
       0,
     );
+    const durationSeconds =
+      travelSeconds + order.reduce((total, index) => total + durations[index] * 60, 0);
+    const leadingTravelSeconds = bounds.startAnchor
+      ? routeEstimates[0].durationSeconds
+      : 0;
+    const trailingTravelSeconds = bounds.endAnchor
+      ? routeEstimates.at(-1)!.durationSeconds
+      : 0;
     return {
       destinationIndexes: order,
       estimates: routeEstimates,
       anchors: routeAnchors,
       travelSeconds,
-      durationSeconds:
-        travelSeconds + order.reduce((total, index) => total + durations[index] * 60, 0),
+      durationSeconds,
+      firstVisitStartSeconds: bounds.startSeconds + leadingTravelSeconds,
+      lastVisitEndSeconds:
+        bounds.startSeconds + durationSeconds - trailingTravelSeconds,
+      leadingTravelSeconds,
+      trailingTravelSeconds,
       identity: order.map((index) => destinations[index].id).join("\0"),
     };
   };
@@ -280,7 +338,7 @@ function routeForDay(
     const partial = state.get(`${mask}:${last}`);
     if (!partial) continue;
     const candidate = finish(partial.order);
-    if (candidate && betterDayRoute(candidate, best)) best = candidate;
+    if (candidate && betterDayRoute(candidate, best, finalVisits)) best = candidate;
   }
   return best ?? null;
 }
@@ -338,8 +396,12 @@ async function solve(
 ): Promise<Candidate | null> {
   const completeMask = (1 << destinations.length) - 1;
   const routeCache = new Map<string, DayRoute | null>();
-  const cachedRoute = (dayIndex: number, dayMask: number) => {
-    const key = `${dayIndex}:${dayMask}`;
+  const cachedRoute = (
+    dayIndex: number,
+    dayMask: number,
+    finalVisits: boolean,
+  ) => {
+    const key = `${dayIndex}:${dayMask}:${finalVisits}`;
     if (!routeCache.has(key)) {
       routeCache.set(
         key,
@@ -350,6 +412,7 @@ async function solve(
           durations,
           estimates,
           !!trip.destinationOrder,
+          finalVisits,
           allowMissing,
           trip,
         ),
@@ -357,7 +420,15 @@ async function solve(
     }
     return routeCache.get(key)!;
   };
-  let states = new Map<number, Candidate>([[0, { days: [], travelSeconds: 0, visitCompletion: 0, identity: "" }]]);
+  let states = new Map<number, Candidate>([[0, {
+    days: [],
+    travelSeconds: 0,
+    openSeconds: 0,
+    visitCompletion: 0,
+    lastVisitEnd: null,
+    trailingTravelSeconds: 0,
+    identity: "",
+  }]]);
   for (let dayIndex = 0; dayIndex < bounds.length; dayIndex += 1) {
     const nextStates = new Map<number, Candidate>();
     for (const [usedMask, current] of states) {
@@ -371,19 +442,51 @@ async function solve(
           allowed = dayMask === expected;
         }
         if (allowed) {
-          const route = cachedRoute(dayIndex, dayMask);
+          const nextMask = usedMask | dayMask;
+          const route = cachedRoute(
+            dayIndex,
+            dayMask,
+            nextMask === completeMask,
+          );
           if (route && route.durationSeconds <= bounds[dayIndex].endSeconds - bounds[dayIndex].startSeconds) {
-            const visitCompletion = route.destinationIndexes.length > 0
-              ? dayIndex * 86_400 + bounds[dayIndex].startSeconds + route.durationSeconds - (bounds[dayIndex].endAnchor ? route.estimates.at(-1)?.durationSeconds ?? 0 : 0)
-              : current.visitCompletion;
+            const firstVisitStart = route.firstVisitStartSeconds === null
+              ? null
+              : dayIndex * 86_400 + route.firstVisitStartSeconds;
+            const lastVisitEnd = route.lastVisitEndSeconds === null
+              ? current.lastVisitEnd
+              : dayIndex * 86_400 + route.lastVisitEndSeconds;
+            // Open time is the elapsed gap between Visits after excluding the
+            // Travel to and from the applicable day anchors.
+            const openSeconds =
+              firstVisitStart === null || current.lastVisitEnd === null
+                ? current.openSeconds
+                : current.openSeconds + Math.max(
+                    0,
+                    firstVisitStart -
+                      current.lastVisitEnd -
+                      current.trailingTravelSeconds -
+                      route.leadingTravelSeconds,
+                  );
+            const visitCompletion = lastVisitEnd ?? current.visitCompletion;
             const candidate: Candidate = {
               days: [...current.days, route],
               travelSeconds: current.travelSeconds + route.travelSeconds,
+              openSeconds,
               visitCompletion: Math.max(current.visitCompletion, visitCompletion),
+              lastVisitEnd,
+              trailingTravelSeconds:
+                route.lastVisitEndSeconds === null
+                  ? current.trailingTravelSeconds
+                  : route.trailingTravelSeconds,
               identity: `${current.identity}|${route.identity}`,
             };
-            const nextMask = usedMask | dayMask;
-            if (betterCandidate(candidate, nextStates.get(nextMask))) nextStates.set(nextMask, candidate);
+            if (
+              betterCandidate(
+                candidate,
+                nextStates.get(nextMask),
+                nextMask === completeMask,
+              )
+            ) nextStates.set(nextMask, candidate);
           }
         }
         if (dayMask === 0) break;

@@ -3,6 +3,7 @@ import type { Destination } from "~/destinations/destination";
 import type { RoutingProvider } from "~/routing/routing-provider";
 import {
   createTrip,
+  optimizeDestinationOrder,
   setAccommodation,
   setBoundary,
   setDailyWindow,
@@ -137,5 +138,38 @@ describe("multi-day Itinerary contract", () => {
     expect(one.ok && one.itinerary.days).toHaveLength(1);
     expect(four.ok && four.itinerary.days).toHaveLength(4);
     expect(five).toMatchObject({ ok: false, code: "unsupported-trip-length" });
+  });
+
+  it("keeps a manual Destination order across planner-assigned days", async () => {
+    let trip = tripForDates("2026-06-01", "2026-06-02", 3);
+    trip = setAccommodation(trip, accommodation, true);
+    trip = setDailyWindow(trip, "2026-06-01", "end", "10:20");
+    trip = setDailyWindow(trip, "2026-06-02", "end", "11:30");
+    trip = {
+      ...trip,
+      destinationOrder: [destinations[2].id, destinations[0].id, destinations[1].id],
+    };
+
+    const result = await buildItinerary(trip, routing());
+
+    expect(result.ok).toBe(true);
+    expect(visitsByDay(result)).toEqual([
+      ["spa"],
+      ["beach", "temple"],
+    ]);
+  });
+
+  it("minimizes open time before completion time and may leave an earlier day empty", async () => {
+    let trip = tripForDates("2026-06-01", "2026-06-02");
+    trip = optimizeDestinationOrder(setAccommodation(trip, accommodation, true));
+    trip = setDailyWindow(trip, "2026-06-01", "end", "10:20");
+
+    const result = await buildItinerary(trip, routing());
+
+    expect(result.ok).toBe(true);
+    expect(visitsByDay(result)).toEqual([
+      [],
+      ["beach", "temple"],
+    ]);
   });
 });

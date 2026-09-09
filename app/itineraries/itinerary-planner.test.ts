@@ -3,6 +3,7 @@ import type { Destination } from "~/destinations/destination";
 import type { RoutingProvider } from "~/routing/routing-provider";
 import {
   createTrip,
+  optimizeDestinationOrder,
   setBoundary,
   setDailyWindow,
   setTransportMode,
@@ -122,7 +123,7 @@ describe("one-day Itinerary Build", () => {
     expect(result).not.toHaveProperty("itinerary");
   });
 
-  it("optimizes Travel duration with a stable Destination identity tie-break", async () => {
+  it("optimizes Travel duration", async () => {
     const durations = new Map([
       ["1.1306:1.1", 100],
       ["1.1:1.2", 100],
@@ -150,6 +151,57 @@ describe("one-day Itinerary Build", () => {
         .filter((entry) => entry.kind === "visit")
         .map((entry) => entry.destinationId),
     ).toEqual(["temple", "beach"]);
+  });
+
+  it("uses earliest completion before stable identity when Travel and open time tie", async () => {
+    const durations = new Map([
+      ["1.1306:1.2", 10],
+      ["1.2:1.1", 10],
+      ["1.1:1.1531", 30],
+      ["1.1306:1.1", 20],
+      ["1.1:1.2", 20],
+      ["1.2:1.1531", 10],
+    ]);
+    const provider: RoutingProvider = {
+      estimateTravel: async ({ origin, destination, mode }) => ({
+        distanceMeters: 1,
+        durationSeconds: durations.get(`${origin.latitude}:${destination.latitude}`)!,
+        geometry: [origin, destination],
+        mode,
+        warnings: [],
+      }),
+    };
+
+    const result = await buildSameDayItinerary(completeTrip(), provider);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(
+      result.itinerary.days[0].entries
+        .filter((entry) => entry.kind === "visit")
+        .map((entry) => entry.destinationId),
+    ).toEqual(["temple", "beach"]);
+  });
+
+  it("uses stable Destination identity after Optimize order removes the manual constraint", async () => {
+    const manuallyOrdered = {
+      ...completeTrip(),
+      destinationOrder: [temple.id, beach.id],
+    };
+    const manual = await buildSameDayItinerary(manuallyOrdered, routing());
+    const optimized = await buildSameDayItinerary(
+      optimizeDestinationOrder(manuallyOrdered),
+      routing(),
+    );
+    const visitIds = (result: Awaited<ReturnType<typeof buildSameDayItinerary>>) =>
+      result.ok
+        ? result.itinerary.days[0].entries
+            .filter((entry) => entry.kind === "visit")
+            .map((entry) => entry.destinationId)
+        : [];
+
+    expect(visitIds(manual)).toEqual(["temple", "beach"]);
+    expect(visitIds(optimized)).toEqual(["beach", "temple"]);
   });
 
   it.each([5, 10, 15] as const)(

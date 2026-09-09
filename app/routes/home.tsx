@@ -122,6 +122,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   const trips = useTrips();
   const [tripListOpen, setTripListOpen] = useState(false);
   const [activeSurface, setActiveSurface] = useState<Surface>("discover");
+  const [pendingTripInput, setPendingTripInput] = useState<string | null>(null);
   const [focusedId, setFocusedId] = useState<string | null>(
     destinations[0]?.id ?? null,
   );
@@ -429,6 +430,21 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     ? destinations.find((destination) => destination.id === viewingId)
     : undefined;
 
+  useEffect(() => {
+    if (activeSurface !== "trip" || !trips.editing || !pendingTripInput) return;
+    const target = document.getElementById(pendingTripInput);
+    if (!target) return;
+    target.scrollIntoView({ block: "center", behavior: "smooth" });
+    target.focus({ preventScroll: true });
+    setPendingTripInput(null);
+  }, [activeSurface, pendingTripInput, trips.editing]);
+
+  function reviewTripInput(targetId?: string) {
+    trips.setEditing(true);
+    setPendingTripInput(targetId ?? null);
+    setActiveSurface("trip");
+  }
+
   function startTrip() {
     trips.create();
     setSearch("");
@@ -717,7 +733,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                   trips={trips}
                   routingProvider={browserRoutingProvider}
                   publishedDestinations={destinations}
-                  onReviewTrip={() => setActiveSurface("trip")}
+                  onReviewTrip={reviewTripInput}
                 />
               </div>
             </ScrollArea>

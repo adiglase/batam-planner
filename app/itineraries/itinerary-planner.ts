@@ -54,14 +54,36 @@ export type Itinerary = {
 
 export type BuildFailureCode =
   | "missing-input"
+  | "excess-destination-count"
   | "unsupported-trip-length"
   | "ineligible-destination"
   | "unavailable-route"
   | "insufficient-time";
 
+export type BuildAction = {
+  label: string;
+  targetId: string;
+};
+
+export type BuildFailure = {
+  ok: false;
+  code: BuildFailureCode;
+  message: string;
+  requirements?: BuildAction[];
+  suggestions: BuildAction[];
+};
+
 export type BuildItineraryResult =
   | { ok: true; itinerary: Itinerary }
-  | { ok: false; code: BuildFailureCode; message: string };
+  | BuildFailure;
+
+function dateAtUtc(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.valueOf()) || date.toISOString().slice(0, 10) !== value
+    ? null
+    : date;
+}
 
 function timeToSeconds(value: string): number | null {
   const match = /^(\d{2}):(\d{2})$/.exec(value);
@@ -503,39 +525,109 @@ export async function buildItinerary(
   routingProvider: RoutingProvider,
   publishedDestinations: readonly Pick<Destination, "id" | "operationalStatus">[] = trip.destinations,
 ): Promise<BuildItineraryResult> {
+  const missing: BuildAction[] = [];
+  if (trip.destinations.length === 0) {
+    missing.push({ label: "Choose at least one Destination", targetId: "choose-destinations" });
+  }
+  for (const kind of ["arrival", "departure"] as const) {
+    const label = kind === "arrival" ? "Arrival" : "Departure";
+    const boundary = trip.boundaries[kind];
+    if (!boundary.terminal) missing.push({ label: `Choose ${kind === "arrival" ? "an" : "a"} ${label.toLowerCase()} ferry terminal`, targetId: `${kind}-terminal` });
+    if (!boundary.date) missing.push({ label: `Set the ${label.toLowerCase()} date`, targetId: `${kind}-date` });
+    if (!boundary.time) missing.push({ label: `Set the ${label.toLowerCase()} time`, targetId: `${kind}-time` });
+  }
+  if (!trip.transportMode) {
+    missing.push({ label: "Choose Primary transport", targetId: "primary-transport-car" });
+  }
+  for (const destination of trip.destinations) {
+    const minutes = effectiveVisitMinutes(trip, destination.id);
+    if (!Number.isInteger(minutes) || minutes! <= 0) {
+      missing.push({ label: `Set a Visit duration for ${destination.name}`, targetId: `visit-duration-${destination.id}` });
+    }
+  }
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      code: "missing-input",
+      message: "Complete these Trip inputs before building. Nothing has been changed.",
+      requirements: missing,
+      suggestions: [],
+    };
+  }
+
+  // Failure priority is stable: structural limits, Published eligibility,
+  // route availability, then usable time. One Build always names one blocker.
+  if (trip.destinations.length > MAX_SELECTED_DESTINATIONS) {
+    return {
+      ok: false,
+      code: "excess-destination-count",
+      message: `${trip.destinations.length} Destinations are selected; a Trip supports at most ${MAX_SELECTED_DESTINATIONS}.`,
+      suggestions: [{ label: `Remove ${trip.destinations.length - MAX_SELECTED_DESTINATIONS} Destination${trip.destinations.length - MAX_SELECTED_DESTINATIONS === 1 ? "" : "s"}`, targetId: `remove-destination-${trip.destinations.at(-1)!.id}` }],
+    };
+  }
+
+  const arrivalDate = dateAtUtc(trip.boundaries.arrival.date);
+  const departureDate = dateAtUtc(trip.boundaries.departure.date);
+  const dayCount = arrivalDate && departureDate
+    ? Math.floor((departureDate.valueOf() - arrivalDate.valueOf()) / 86_400_000) + 1
+    : 0;
+  if (!arrivalDate || !departureDate || dayCount < 1 || dayCount > 4) {
+    const detail = dayCount > 4
+      ? `The Trip spans ${dayCount} Batam calendar days; only one through four are supported.`
+      : "The departure date must be on or after the arrival date, forming one through four Batam calendar days.";
+    return {
+      ok: false,
+      code: "unsupported-trip-length",
+      message: detail,
+      suggestions: [
+        { label: "Change the arrival date", targetId: "arrival-date" },
+        { label: "Change the departure date", targetId: "departure-date" },
+      ],
+    };
+  }
   const dates = tripDayDates(trip);
-  if (dates.length === 0) {
-    return { ok: false, code: "unsupported-trip-length", message: "A Trip must cover one through four Batam calendar days." };
-  }
-  if (trip.destinations.length < 1 || trip.destinations.length > MAX_SELECTED_DESTINATIONS || !trip.transportMode) {
-    return { ok: false, code: "missing-input", message: "Choose one through ten Destinations and a Primary transport." };
-  }
   const arrivalTerminal = findFerryTerminal(trip.boundaries.arrival.terminal);
   const departureTerminal = findFerryTerminal(trip.boundaries.departure.terminal);
   const arrivalSeconds = timeToSeconds(trip.boundaries.arrival.time);
   const departureSeconds = timeToSeconds(trip.boundaries.departure.time);
-  if (!arrivalTerminal || !departureTerminal || arrivalSeconds === null || departureSeconds === null) {
-    return { ok: false, code: "missing-input", message: "Choose supported ferry terminals and complete the Trip Boundary times." };
-  }
+  const invalidBoundaryRequirements: BuildAction[] = [];
+  if (!arrivalTerminal) invalidBoundaryRequirements.push({ label: "Choose a supported arrival ferry terminal", targetId: "arrival-terminal" });
+  if (!departureTerminal) invalidBoundaryRequirements.push({ label: "Choose a supported departure ferry terminal", targetId: "departure-terminal" });
+  if (arrivalSeconds === null) invalidBoundaryRequirements.push({ label: "Set a valid arrival time", targetId: "arrival-time" });
+  if (departureSeconds === null) invalidBoundaryRequirements.push({ label: "Set a valid departure time", targetId: "departure-time" });
   const windows = dates.map((date) => trip.dailyWindows.find((window) => window.date === date));
   const parsedWindows = windows.map((window) => window ? [timeToSeconds(window.start), timeToSeconds(window.end)] as const : [null, null] as const);
-  if (parsedWindows.some(([start, end]) => start === null || end === null || start >= end)) {
-    return { ok: false, code: "missing-input", message: "Complete every Daily window with an end later than its start." };
+  parsedWindows.forEach(([start, end], index) => {
+    if (start === null || end === null || start >= end) {
+      invalidBoundaryRequirements.push({ label: `Set a valid Daily window for ${dates[index]}`, targetId: `day-${dates[index]}-start` });
+    }
+  });
+  if (invalidBoundaryRequirements.length > 0) {
+    return {
+      ok: false,
+      code: "missing-input",
+      message: "Correct these Trip inputs before building. Nothing has been changed.",
+      requirements: invalidBoundaryRequirements,
+      suggestions: [],
+    };
   }
+
   const publishedStatuses = new Map(publishedDestinations.map(({ id, operationalStatus }) => [id, operationalStatus]));
   const blocked = trip.destinations.find(({ id }) => publishedStatuses.get(id) !== "Open");
-  if (blocked) return { ok: false, code: "ineligible-destination", message: `${blocked.name} is not currently eligible for a Visit.` };
+  if (blocked) return {
+    ok: false,
+    code: "ineligible-destination",
+    message: `${blocked.name} is not currently eligible for a Visit.`,
+    suggestions: [{ label: `Remove ${blocked.name}`, targetId: `remove-destination-${blocked.id}` }],
+  };
 
   const destinations = trip.destinationOrder
     ? trip.destinationOrder.map((id) => trip.destinations.find((destination) => destination.id === id)!)
     : [...trip.destinations];
-  const durations = destinations.map((destination) => effectiveVisitMinutes(trip, destination.id) ?? 0);
-  if (durations.some((minutes) => !Number.isInteger(minutes) || minutes <= 0)) {
-    return { ok: false, code: "missing-input", message: "Every selected Destination needs a Visit duration." };
-  }
+  const durations = destinations.map((destination) => effectiveVisitMinutes(trip, destination.id)!);
 
-  const arrivalAnchor = terminalAnchor(arrivalTerminal.name, arrivalTerminal.coordinates);
-  const departureAnchor = terminalAnchor(departureTerminal.name, departureTerminal.coordinates);
+  const arrivalAnchor = terminalAnchor(arrivalTerminal!.name, arrivalTerminal!.coordinates);
+  const departureAnchor = terminalAnchor(departureTerminal!.name, departureTerminal!.coordinates);
   const accommodationAnchor = trip.accommodation ? destinationAnchor({ ...trip.accommodation, typicalVisitMinutes: undefined, operationalStatus: "Open" }) : null;
   const multiDay = dates.length > 1;
   const bounds: DayBounds[] = dates.map((date, index) => {
@@ -544,14 +636,23 @@ export async function buildItinerary(
     const last = index === dates.length - 1;
     return {
       date,
-      startSeconds: first ? Math.max(windowStart, arrivalSeconds) : windowStart,
-      endSeconds: last ? Math.min(windowEnd, departureSeconds) : windowEnd,
+      startSeconds: first ? Math.max(windowStart, arrivalSeconds!) : windowStart,
+      endSeconds: last ? Math.min(windowEnd, departureSeconds!) : windowEnd,
       startAnchor: first ? arrivalAnchor : multiDay ? accommodationAnchor : null,
       endAnchor: last ? departureAnchor : multiDay ? accommodationAnchor : null,
     };
   });
-  if (bounds.some((day) => day.startSeconds > day.endSeconds)) {
-    return { ok: false, code: "insufficient-time", message: "A Daily window has no usable time within the Trip Boundaries." };
+  const unusableDay = bounds.find((day) => day.startSeconds > day.endSeconds);
+  if (unusableDay) {
+    return {
+      ok: false,
+      code: "insufficient-time",
+      message: `${unusableDay.date} has no usable time where its Daily window and Trip Boundaries overlap.`,
+      suggestions: [
+        { label: `Widen the Daily window for ${unusableDay.date}`, targetId: `day-${unusableDay.date}-start` },
+        { label: "Change the Trip Boundaries", targetId: "arrival-time" },
+      ],
+    };
   }
 
   const destinationAnchors = destinations.map(destinationAnchor);
@@ -583,9 +684,41 @@ export async function buildItinerary(
   const solution = await solve(trip, bounds, destinations, durations, estimates, false);
   if (!solution) {
     const fitsWithoutMissingRoutes = await solve(trip, bounds, destinations, durations, estimates, true);
-    return fitsWithoutMissingRoutes
-      ? { ok: false, code: "unavailable-route", message: "No complete Travel route connects every required terminal, Accommodation, and Destination anchor." }
-      : { ok: false, code: "insufficient-time", message: "The complete Itinerary does not fit within the Trip Boundaries and Daily windows." };
+    if (fitsWithoutMissingRoutes) {
+      const missingLeg = fitsWithoutMissingRoutes.days
+        .flatMap((day) => day.anchors.slice(0, -1).map((origin, index) => [origin, day.anchors[index + 1]] as const))
+        .find(([origin, destination]) => !estimates.has(estimateKey(origin, destination)));
+      const routeMessage = missingLeg
+        ? `Travel from ${missingLeg[0].name} to ${missingLeg[1].name} is unavailable using ${trip.transportMode}.`
+        : `A required Travel route is unavailable using ${trip.transportMode}.`;
+      return {
+        ok: false,
+        code: "unavailable-route",
+        message: routeMessage,
+        suggestions: [
+          { label: "Choose different Primary transport", targetId: "primary-transport-car" },
+          { label: "Change the Trip Boundaries", targetId: "arrival-terminal" },
+          { label: "Remove a Destination", targetId: `remove-destination-${destinations.at(-1)!.id}` },
+        ],
+      };
+    }
+    const usableMinutes = Math.floor(bounds.reduce(
+      (total, day) => total + Math.max(0, day.endSeconds - day.startSeconds),
+      0,
+    ) / 60);
+    const visitMinutes = durations.reduce((total, minutes) => total + minutes, 0);
+    return {
+      ok: false,
+      code: "insufficient-time",
+      message: `The selected Visits need ${visitMinutes} minutes before Travel, with ${usableMinutes} usable minutes across the Trip Boundaries and Daily windows. No complete Itinerary fits.`,
+      suggestions: [
+        { label: "Shorten a Visit", targetId: `visit-duration-${destinations[0].id}` },
+        { label: "Widen a Daily window", targetId: `day-${dates[0]}-start` },
+        { label: "Choose different Primary transport", targetId: "primary-transport-car" },
+        { label: "Change the Trip Boundaries", targetId: "departure-time" },
+        { label: "Remove a Destination", targetId: `remove-destination-${destinations.at(-1)!.id}` },
+      ],
+    };
   }
 
   return {

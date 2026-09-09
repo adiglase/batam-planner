@@ -1,14 +1,37 @@
 import type { Destination } from "~/destinations/destination";
+import type { TransportMode } from "~/routing/routing-provider";
 
 export type SelectedDestination = Pick<
   Destination,
   "id" | "name" | "coordinates" | "typicalVisitMinutes" | "operationalStatus"
 >;
+
+export type AccommodationRef = Pick<
+  Destination,
+  "id" | "name" | "coordinates"
+>;
+
+export type PrimaryTransportMode = TransportMode;
+
+export const TRANSPORT_MODES: readonly PrimaryTransportMode[] = [
+  "car",
+  "motorcycle",
+  "walking",
+] as const;
+
+export function isPrimaryTransportMode(
+  value: string,
+): value is PrimaryTransportMode {
+  return (TRANSPORT_MODES as readonly string[]).includes(value);
+}
+
 export type Trip = {
   id: string;
   name: string;
   destinations: SelectedDestination[];
   dates: { arrival?: string; departure?: string };
+  accommodation: AccommodationRef | null;
+  transportMode: PrimaryTransportMode | null;
   revision: number;
   itinerary: { inputRevision: number; [key: string]: unknown } | null;
 };
@@ -32,12 +55,73 @@ export function createTrip(id: string): Trip {
     name: "",
     destinations: [],
     dates: {},
+    accommodation: null,
+    transportMode: null,
     revision: 0,
     itinerary: null,
   };
 }
+/**
+ * A Destination is selectable as a Visit when it is Open. The Destination
+ * assigned as the Trip's Accommodation is rejected separately by
+ * `toggleDestination`, keeping only those two roles mutually exclusive.
+ */
 export function canSelect(destination: Destination) {
   return destination.operationalStatus === "Open";
+}
+/**
+ * Any Open Published Accommodation-category Destination is eligible as
+ * Accommodation. Temporarily closed Destinations cannot become
+ * Accommodation, mirroring the Visit selection rule.
+ */
+export function canSetAsAccommodation(destination: Destination) {
+  return (
+    destination.primaryCategory === "Accommodation" &&
+    destination.operationalStatus === "Open"
+  );
+}
+/**
+ * Whether the Destination is currently the Trip's Accommodation.
+ * The Accommodation is never also a selected Visit.
+ */
+export function isAccommodation(
+  trip: Pick<Trip, "accommodation">,
+  id: string,
+) {
+  return trip.accommodation?.id === id;
+}
+export function setAccommodation(
+  trip: Trip,
+  destination: Destination,
+  editing: boolean,
+): Trip {
+  if (!editing) return trip;
+  if (!canSetAsAccommodation(destination)) return trip;
+  if (isAccommodation(trip, destination.id)) return trip;
+  const { id, name, coordinates } = destination;
+  return {
+    ...trip,
+    revision: trip.revision + 1,
+    // Accommodation is distinct from Trip membership: the same Destination
+    // can never be both the Accommodation and a selected Visit.
+    destinations: trip.destinations.filter((item) => item.id !== id),
+    accommodation: { id, name, coordinates },
+  };
+}
+export function clearAccommodation(trip: Trip, editing: boolean): Trip {
+  if (!editing) return trip;
+  if (!trip.accommodation) return trip;
+  return { ...trip, revision: trip.revision + 1, accommodation: null };
+}
+export function setTransportMode(
+  trip: Trip,
+  mode: PrimaryTransportMode,
+  editing: boolean,
+): Trip {
+  if (!editing) return trip;
+  if (!TRANSPORT_MODES.includes(mode)) return trip;
+  if (trip.transportMode === mode) return trip;
+  return { ...trip, revision: trip.revision + 1, transportMode: mode };
 }
 export function toggleDestination(
   trip: Trip,
@@ -45,6 +129,8 @@ export function toggleDestination(
   editing: boolean,
 ): Trip {
   if (!editing) return trip;
+  // The Accommodation can never be a selected Visit.
+  if (isAccommodation(trip, destination.id)) return trip;
   const selected = trip.destinations.some(({ id }) => id === destination.id);
   if (!selected && !canSelect(destination)) return trip;
   const { id, name, coordinates, typicalVisitMinutes, operationalStatus } =
@@ -73,6 +159,19 @@ export function removeSelectedDestination(trip: Trip, id: string): Trip {
   };
 }
 
+function isAccommodationRef(value: unknown): value is AccommodationRef {
+  if (!value || typeof value !== "object") return false;
+  const accommodation = value as AccommodationRef;
+  return (
+    typeof accommodation.id === "string" &&
+    accommodation.id.length > 0 &&
+    typeof accommodation.name === "string" &&
+    !!accommodation.coordinates &&
+    Number.isFinite(accommodation.coordinates.latitude) &&
+    Number.isFinite(accommodation.coordinates.longitude)
+  );
+}
+
 function isTrip(value: unknown): value is Trip {
   if (!value || typeof value !== "object") return false;
   const t = value as Trip;
@@ -87,6 +186,14 @@ function isTrip(value: unknown): value is Trip {
     [t.dates.arrival, t.dates.departure].every(
       (d) => d === undefined || typeof d === "string",
     ) &&
+    // Accommodation and transport were added in issue #18; older stored
+    // Trips without them remain readable and normalize to null on load.
+    (t.accommodation === null ||
+      t.accommodation === undefined ||
+      isAccommodationRef(t.accommodation)) &&
+    (t.transportMode === null ||
+      t.transportMode === undefined ||
+      (TRANSPORT_MODES as readonly string[]).includes(t.transportMode)) &&
     (t.itinerary === null ||
       (!!t.itinerary &&
         typeof t.itinerary === "object" &&
@@ -104,7 +211,9 @@ function isTrip(value: unknown): value is Trip {
           Number.isFinite(d.typicalVisitMinutes)) &&
         ["Open", "Temporarily closed"].includes(d.operationalStatus),
     ) &&
-    new Set(t.destinations.map((d) => d.id)).size === t.destinations.length
+    new Set(t.destinations.map((d) => d.id)).size === t.destinations.length &&
+    // The Accommodation is never also a selected Visit.
+    !t.destinations.some((d) => d.id === t.accommodation?.id)
   );
 }
 
@@ -135,7 +244,14 @@ export class TripRepository {
         throw new Error("Invalid Trip storage");
       this.readable = true;
       return {
-        collection: { trips: data.trips, activeTripId: data.activeTripId },
+        collection: {
+          trips: data.trips.map((trip: Trip) => ({
+            ...trip,
+            accommodation: trip.accommodation ?? null,
+            transportMode: trip.transportMode ?? null,
+          })),
+          activeTripId: data.activeTripId,
+        },
         failed: false,
       };
     } catch {

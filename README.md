@@ -42,6 +42,17 @@ map fallback:
 VITE_GOOGLE_MAPS_API_KEY=your-browser-key npm run dev
 ```
 
+Set a separate server-only key with the Google Routes API enabled to show
+traffic-unaware distance and duration from a Trip's Accommodation. Keep this
+key out of `VITE_*` variables and restrict it to the Routes API:
+
+```bash
+GOOGLE_ROUTES_API_KEY=your-server-key npm run dev
+```
+
+Without this key, Travel estimates explicitly report that calculation is
+unavailable.
+
 ## Private owner sign-in
 
 Open `/owner/login` directly (locally: <http://localhost:5173/owner/login>).

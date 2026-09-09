@@ -74,6 +74,9 @@ import {
 } from "~/discovery/discovery-session";
 import { BATAM_MAP_CENTER } from "~/geography/coordinates";
 import { ConfiguredMap } from "~/map/configured-map";
+import { isAccommodation } from "~/trips/trip-repository";
+import { browserRoutingProvider } from "~/routing/browser-routing-provider";
+import type { RoutingProvider } from "~/routing/routing-provider";
 import type { MapViewport } from "~/map/map-provider";
 
 export function meta() {
@@ -665,6 +668,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 baseCount={baseFiltered.length}
                 focusedDestination={focusedDestination}
                 viewingDestination={viewingDestination}
+                routingProvider={browserRoutingProvider}
                 search={search}
                 onSearchChange={setSearch}
                 availableCategories={availableCategories}
@@ -726,6 +730,7 @@ function DiscoverSurface({
   baseCount,
   focusedDestination,
   viewingDestination,
+  routingProvider,
   search,
   onSearchChange,
   availableCategories,
@@ -749,6 +754,7 @@ function DiscoverSurface({
   baseCount: number;
   focusedDestination?: Destination;
   viewingDestination?: Destination;
+  routingProvider: RoutingProvider;
   search: string;
   onSearchChange: (value: string) => void;
   availableCategories: string[];
@@ -776,6 +782,9 @@ function DiscoverSurface({
           <DestinationDetails
             destination={viewingDestination}
             onBack={onBack}
+            accommodation={trips.activeTrip?.accommodation ?? null}
+            transportMode={trips.activeTrip?.transportMode ?? null}
+            routingProvider={routingProvider}
           />
         </div>
       </ScrollArea>
@@ -1097,6 +1106,10 @@ function DiscoverSurface({
                         (trips.editing ||
                           trips.activeTrip.destinations.some(
                             ({ id }) => id === destination.id,
+                          ) ||
+                          isAccommodation(
+                            trips.activeTrip,
+                            destination.id,
                           )) ? (
                           <DestinationSelection
                             destination={destination}

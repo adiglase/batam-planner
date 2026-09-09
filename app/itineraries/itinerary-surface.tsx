@@ -24,6 +24,7 @@ import {
 } from "~/components/ui/empty";
 import { Separator } from "~/components/ui/separator";
 import { Spinner } from "~/components/ui/spinner";
+import type { Destination } from "~/destinations/destination";
 import type { RoutingProvider } from "~/routing/routing-provider";
 import {
   formatTravelDistance,
@@ -40,10 +41,12 @@ import {
 export function ItinerarySurface({
   trips,
   routingProvider,
+  publishedDestinations,
   onReviewTrip,
 }: {
   trips: TripControls;
   routingProvider: RoutingProvider;
+  publishedDestinations: readonly Destination[];
   onReviewTrip: () => void;
 }) {
   const [building, setBuilding] = useState(false);
@@ -70,7 +73,11 @@ export function ItinerarySurface({
     if (!trip || building) return;
     setBuilding(true);
     setFailure(null);
-    const result = await buildSameDayItinerary(trip, routingProvider);
+    const result = await buildSameDayItinerary(
+      trip,
+      routingProvider,
+      publishedDestinations,
+    );
     if (result.ok) {
       if (!trips.storeBuiltItinerary(trip.id, result.itinerary)) {
         setFailure("Trip inputs changed during the Build. Review them and build again.");

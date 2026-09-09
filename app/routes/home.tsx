@@ -716,6 +716,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 <ItinerarySurface
                   trips={trips}
                   routingProvider={browserRoutingProvider}
+                  publishedDestinations={destinations}
                   onReviewTrip={() => setActiveSurface("trip")}
                 />
               </div>

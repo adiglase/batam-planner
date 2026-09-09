@@ -7,6 +7,7 @@ import {
   setDailyWindow,
   setTransportMode,
   toggleDestination,
+  useCurrentDestinationOrder,
 } from "~/trips/trip-repository";
 import { buildSameDayItinerary } from "./same-day-planner";
 
@@ -67,7 +68,7 @@ describe("same-day Itinerary Build", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(provider.estimateTravel).toHaveBeenCalledTimes(3);
+    expect(provider.estimateTravel).toHaveBeenCalledTimes(6);
     expect(result.itinerary.inputRevision).toBe(trip.revision);
     expect(result.itinerary.startSeconds).toBe(9 * 3600);
     expect(result.itinerary.endSeconds).toBe(11 * 3600);
@@ -105,7 +106,7 @@ describe("same-day Itinerary Build", () => {
           : { distanceMeters: 1, durationSeconds: 1, geometry: [origin, destination], mode };
       },
     };
-    const trip = completeTrip();
+    const trip = useCurrentDestinationOrder(completeTrip());
     await expect(buildSameDayItinerary(trip, provider)).resolves.toEqual({
       ok: false,
       code: "unavailable-route",
@@ -119,6 +120,77 @@ describe("same-day Itinerary Build", () => {
     const result = await buildSameDayItinerary(trip, routing());
     expect(result).toMatchObject({ ok: false, code: "insufficient-time" });
     expect(result).not.toHaveProperty("itinerary");
+  });
+
+  it("optimizes Travel duration with a stable Destination identity tie-break", async () => {
+    const durations = new Map([
+      ["1.1306:1.1", 100],
+      ["1.1:1.2", 100],
+      ["1.2:1.1531", 100],
+      ["1.1306:1.2", 10],
+      ["1.2:1.1", 10],
+      ["1.1:1.1531", 10],
+    ]);
+    const provider: RoutingProvider = {
+      estimateTravel: async ({ origin, destination, mode }) => ({
+        distanceMeters: 1,
+        durationSeconds:
+          durations.get(`${origin.latitude}:${destination.latitude}`) ?? 1_000,
+        geometry: [origin, destination],
+        mode,
+      }),
+    };
+    const result = await buildSameDayItinerary(completeTrip(), provider);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(
+      result.itinerary.entries
+        .filter((entry) => entry.kind === "visit")
+        .map((entry) => entry.destinationId),
+    ).toEqual(["temple", "beach"]);
+  });
+
+  it("walks qualifying legs and falls back to Primary transport", async () => {
+    const trip = {
+      ...completeTrip(),
+      destinations: [completeTrip().destinations[0]],
+      destinationOrder: [beach.id],
+      shortWalkMinutes: 5 as const,
+    };
+    let walkingRequest = 0;
+    const provider: RoutingProvider = {
+      estimateTravel: async ({ origin, destination, mode }) => {
+        if (mode === "walking") walkingRequest += 1;
+        return {
+          distanceMeters: 1,
+          durationSeconds:
+            mode === "walking" ? (walkingRequest === 1 ? 300 : 301) : 60,
+          geometry: [origin, destination],
+          mode,
+        };
+      },
+    };
+    const result = await buildSameDayItinerary(trip, provider);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(
+      result.itinerary.entries
+        .filter((entry) => entry.kind === "travel")
+        .map((entry) => entry.estimate.mode),
+    ).toEqual(["walking", "car"]);
+  });
+
+  it("rejects a Destination whose current Published status is no longer eligible", async () => {
+    const provider = routing();
+    const result = await buildSameDayItinerary(completeTrip(), provider, [
+      { id: beach.id, operationalStatus: "Temporarily closed" },
+      { id: temple.id, operationalStatus: "Open" },
+    ]);
+
+    expect(result).toMatchObject({ ok: false, code: "ineligible-destination" });
+    expect(provider.estimateTravel).not.toHaveBeenCalled();
   });
 
   it("does not read or apply Operating hours", async () => {

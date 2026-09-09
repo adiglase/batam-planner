@@ -1,3 +1,4 @@
+import type { Destination } from "~/destinations/destination";
 import { findFerryTerminal } from "~/geography/ferry-terminals";
 import type { Coordinates } from "~/geography/coordinates";
 import type {
@@ -73,6 +74,141 @@ function destinationAnchor(destination: SelectedDestination): ItineraryAnchor {
   };
 }
 
+async function estimateLeg(
+  origin: ItineraryAnchor,
+  destination: ItineraryAnchor,
+  trip: Trip,
+  routingProvider: RoutingProvider,
+) {
+  if (trip.transportMode !== "walking" && trip.shortWalkMinutes > 0) {
+    const walking = await routingProvider.estimateTravel({
+      origin: origin.coordinates,
+      destination: destination.coordinates,
+      mode: "walking",
+    });
+    if (walking && walking.durationSeconds <= trip.shortWalkMinutes * 60) {
+      return walking;
+    }
+  }
+  return routingProvider.estimateTravel({
+    origin: origin.coordinates,
+    destination: destination.coordinates,
+    mode: trip.transportMode!,
+  });
+}
+
+type OptimizedRoute = {
+  destinations: SelectedDestination[];
+  estimates: TravelEstimate[];
+};
+
+type PartialRoute = {
+  durationSeconds: number;
+  destinationIndexes: number[];
+};
+
+function routeIdentity(route: PartialRoute, destinations: SelectedDestination[]) {
+  return route.destinationIndexes.map((index) => destinations[index].id).join("\0");
+}
+
+function isBetterRoute(
+  candidate: PartialRoute,
+  current: PartialRoute | undefined,
+  destinations: SelectedDestination[],
+) {
+  return (
+    !current ||
+    candidate.durationSeconds < current.durationSeconds ||
+    (candidate.durationSeconds === current.durationSeconds &&
+      routeIdentity(candidate, destinations) < routeIdentity(current, destinations))
+  );
+}
+
+async function optimizeRoute(
+  destinations: SelectedDestination[],
+  arrival: ItineraryAnchor,
+  departure: ItineraryAnchor,
+  trip: Trip,
+  routingProvider: RoutingProvider,
+): Promise<OptimizedRoute | null> {
+  const destinationAnchors = destinations.map(destinationAnchor);
+  const estimates = new Map<string, TravelEstimate>();
+  const key = (origin: ItineraryAnchor, destination: ItineraryAnchor) =>
+    `${origin.id}\0${destination.id}`;
+  const candidates = [
+    ...destinationAnchors.map((destination) => [arrival, destination] as const),
+    ...destinationAnchors.flatMap((origin, originIndex) =>
+      destinationAnchors.flatMap((destination, destinationIndex) =>
+        originIndex === destinationIndex ? [] : [[origin, destination] as const],
+      ),
+    ),
+    ...destinationAnchors.map((origin) => [origin, departure] as const),
+  ];
+  await Promise.all(
+    candidates.map(async ([origin, destination]) => {
+      const estimate = await estimateLeg(origin, destination, trip, routingProvider);
+      if (estimate) estimates.set(key(origin, destination), estimate);
+    }),
+  );
+
+  const state = new Map<string, PartialRoute>();
+  destinationAnchors.forEach((destination, index) => {
+    const estimate = estimates.get(key(arrival, destination));
+    if (estimate) {
+      state.set(`${1 << index}:${index}`, {
+        durationSeconds: estimate.durationSeconds,
+        destinationIndexes: [index],
+      });
+    }
+  });
+  const completeMask = (1 << destinations.length) - 1;
+  for (let mask = 1; mask <= completeMask; mask += 1) {
+    for (let last = 0; last < destinations.length; last += 1) {
+      const current = state.get(`${mask}:${last}`);
+      if (!current) continue;
+      for (let next = 0; next < destinations.length; next += 1) {
+        if (mask & (1 << next)) continue;
+        const estimate = estimates.get(
+          key(destinationAnchors[last], destinationAnchors[next]),
+        );
+        if (!estimate) continue;
+        const nextMask = mask | (1 << next);
+        const candidate = {
+          durationSeconds: current.durationSeconds + estimate.durationSeconds,
+          destinationIndexes: [...current.destinationIndexes, next],
+        };
+        const stateKey = `${nextMask}:${next}`;
+        if (isBetterRoute(candidate, state.get(stateKey), destinations)) {
+          state.set(stateKey, candidate);
+        }
+      }
+    }
+  }
+
+  let best: PartialRoute | undefined;
+  for (let last = 0; last < destinations.length; last += 1) {
+    const route = state.get(`${completeMask}:${last}`);
+    const finalEstimate = estimates.get(key(destinationAnchors[last], departure));
+    if (!route || !finalEstimate) continue;
+    const candidate = {
+      ...route,
+      durationSeconds: route.durationSeconds + finalEstimate.durationSeconds,
+    };
+    if (isBetterRoute(candidate, best, destinations)) best = candidate;
+  }
+  if (!best) return null;
+  const orderedAnchors = best.destinationIndexes.map(
+    (index) => destinationAnchors[index],
+  );
+  const anchors = [arrival, ...orderedAnchors, departure];
+  return {
+    destinations: best.destinationIndexes.map((index) => destinations[index]),
+    estimates: anchors.slice(0, -1).map(
+      (origin, index) => estimates.get(key(origin, anchors[index + 1]))!,
+    ),
+  };
+}
+
 /**
  * Build a complete same-day Itinerary or no Itinerary at all. The function is
  * deliberately side-effect free except for provider requests; callers commit
@@ -81,6 +217,8 @@ function destinationAnchor(destination: SelectedDestination): ItineraryAnchor {
 export async function buildSameDayItinerary(
   trip: Trip,
   routingProvider: RoutingProvider,
+  publishedDestinations: readonly Pick<Destination, "id" | "operationalStatus">[] =
+    trip.destinations,
 ): Promise<BuildItineraryResult> {
   const days = tripDayDates(trip);
   if (days.length !== 1) {
@@ -122,10 +260,13 @@ export async function buildSameDayItinerary(
       message: "Choose supported ferry terminals and complete the Trip Boundary and Daily window times.",
     };
   }
-  if (trip.destinations.some(({ operationalStatus }) => operationalStatus !== "Open")) {
-    const blocked = trip.destinations.find(
-      ({ operationalStatus }) => operationalStatus !== "Open",
-    )!;
+  const publishedStatuses = new Map(
+    publishedDestinations.map(({ id, operationalStatus }) => [id, operationalStatus]),
+  );
+  const blocked = trip.destinations.find(
+    ({ id }) => publishedStatuses.get(id) !== "Open",
+  );
+  if (blocked) {
     return {
       ok: false,
       code: "ineligible-destination",
@@ -133,14 +274,18 @@ export async function buildSameDayItinerary(
     };
   }
 
-  const orderedIds = trip.destinationOrder ?? trip.destinations.map(({ id }) => id);
-  const destinations = orderedIds.map(
-    (id) => trip.destinations.find((destination) => destination.id === id)!,
+  let destinations = trip.destinationOrder
+    ? trip.destinationOrder.map(
+        (id) => trip.destinations.find((destination) => destination.id === id)!,
+      )
+    : trip.destinations;
+  const durations = new Map(
+    destinations.map((destination) => [
+      destination.id,
+      effectiveVisitMinutes(trip, destination.id),
+    ]),
   );
-  const durations = destinations.map((destination) =>
-    effectiveVisitMinutes(trip, destination.id),
-  );
-  if (durations.some((minutes) => !minutes || !Number.isInteger(minutes) || minutes <= 0)) {
+  if ([...durations.values()].some((minutes) => !minutes || !Number.isInteger(minutes) || minutes <= 0)) {
     return {
       ok: false,
       code: "missing-input",
@@ -148,36 +293,57 @@ export async function buildSameDayItinerary(
     };
   }
 
-  const anchors: ItineraryAnchor[] = [
-    {
-      id: `terminal:${arrivalTerminal.name}`,
-      name: arrivalTerminal.name,
-      coordinates: arrivalTerminal.coordinates,
-      kind: "terminal",
-    },
-    ...destinations.map(destinationAnchor),
-    {
-      id: `terminal:${departureTerminal.name}`,
-      name: departureTerminal.name,
-      coordinates: departureTerminal.coordinates,
-      kind: "terminal",
-    },
-  ];
-  const estimates: TravelEstimate[] = [];
-  for (let index = 0; index < anchors.length - 1; index += 1) {
-    const estimate = await routingProvider.estimateTravel({
-      origin: anchors[index].coordinates,
-      destination: anchors[index + 1].coordinates,
-      mode: trip.transportMode,
-    });
-    if (!estimate) {
+  const arrivalAnchor: ItineraryAnchor = {
+    id: `terminal:${arrivalTerminal.name}`,
+    name: arrivalTerminal.name,
+    coordinates: arrivalTerminal.coordinates,
+    kind: "terminal",
+  };
+  const departureAnchor: ItineraryAnchor = {
+    id: `terminal:${departureTerminal.name}`,
+    name: departureTerminal.name,
+    coordinates: departureTerminal.coordinates,
+    kind: "terminal",
+  };
+  let anchors: ItineraryAnchor[];
+  let estimates: TravelEstimate[];
+  if (trip.destinationOrder === null) {
+    const optimized = await optimizeRoute(
+      destinations,
+      arrivalAnchor,
+      departureAnchor,
+      trip,
+      routingProvider,
+    );
+    if (!optimized) {
       return {
         ok: false,
         code: "unavailable-route",
-        message: `Travel from ${anchors[index].name} to ${anchors[index + 1].name} is unavailable.`,
+        message: "No complete Travel route connects every selected Destination.",
       };
     }
-    estimates.push(estimate);
+    destinations = optimized.destinations;
+    anchors = [arrivalAnchor, ...destinations.map(destinationAnchor), departureAnchor];
+    estimates = optimized.estimates;
+  } else {
+    anchors = [arrivalAnchor, ...destinations.map(destinationAnchor), departureAnchor];
+    estimates = [];
+    for (let index = 0; index < anchors.length - 1; index += 1) {
+      const estimate = await estimateLeg(
+        anchors[index],
+        anchors[index + 1],
+        trip,
+        routingProvider,
+      );
+      if (!estimate) {
+        return {
+          ok: false,
+          code: "unavailable-route",
+          message: `Travel from ${anchors[index].name} to ${anchors[index + 1].name} is unavailable.`,
+        };
+      }
+      estimates.push(estimate);
+    }
   }
 
   const availableStart = Math.max(arrivalSeconds, windowStart);
@@ -194,14 +360,11 @@ export async function buildSameDayItinerary(
       startSeconds: cursor,
       endSeconds: travelEnd,
       // Preserve provider-independent routing facts without adding buffers.
-      estimate: {
-        ...estimate,
-        geometry: estimate.geometry.map((point) => ({ ...point })),
-      },
+      estimate,
     });
     cursor = travelEnd;
     if (index < destinations.length) {
-      const durationMinutes = durations[index]!;
+      const durationMinutes = durations.get(destinations[index].id)!;
       const visitEnd = cursor + durationMinutes * 60;
       entries.push({
         kind: "visit",

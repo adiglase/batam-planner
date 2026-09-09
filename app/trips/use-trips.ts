@@ -127,11 +127,13 @@ export function useTrips() {
     },
     storeBuiltItinerary(tripId: string, itinerary: SameDayItinerary) {
       const existing = current.current.trips.find((trip) => trip.id === tripId);
-      if (!existing || existing.revision !== itinerary.inputRevision) return false;
+      if (!existing) return false;
+      const built = storeBuiltItinerary(existing, itinerary);
+      if (built === existing) return false;
       commit({
         ...current.current,
         trips: current.current.trips.map((trip) =>
-          trip.id === tripId ? storeBuiltItinerary(trip, itinerary) : trip,
+          trip.id === tripId ? built : trip,
         ),
       });
       return true;

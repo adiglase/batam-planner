@@ -30,6 +30,7 @@ describe("travel estimates through the provider-independent contract", () => {
         durationSeconds: 29 * 60,
         mode: "car",
         geometry: [],
+        warnings: [],
       }),
     ).toBe("About 29 min · 18.0 km by Car / taxi / ride-hailing");
   });

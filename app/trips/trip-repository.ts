@@ -362,6 +362,15 @@ function isItineraryEntry(entry: any) {
     Number.isFinite(entry.estimate.distanceMeters) &&
     Number.isFinite(entry.estimate.durationSeconds) &&
     TRANSPORT_MODES.includes(entry.estimate.mode) &&
+    (entry.estimate.warnings === undefined ||
+      (Array.isArray(entry.estimate.warnings) &&
+        entry.estimate.warnings.every(
+          (warning: any) =>
+            warning &&
+            (warning.code === "walking-route-limitations" ||
+              warning.code === "two-wheel-route-limitations") &&
+            typeof warning.message === "string",
+        ))) &&
     Array.isArray(entry.estimate.geometry) &&
     entry.estimate.geometry.every(
       (point: any) =>
@@ -416,16 +425,35 @@ function isLegacySameDayItinerary(value: any) {
 
 function normalizeItinerary(value: any): Itinerary | null {
   if (value === null) return null;
-  if (isItinerary(value)) return value;
+  const itinerary = isItinerary(value)
+    ? value
+    : {
+        inputRevision: value.inputRevision,
+        days: [{
+          date: value.date,
+          startSeconds: value.startSeconds,
+          endSeconds: value.endSeconds,
+          entries: value.entries,
+        }],
+        warnings: [],
+      };
   return {
-    inputRevision: value.inputRevision,
-    days: [{
-      date: value.date,
-      startSeconds: value.startSeconds,
-      endSeconds: value.endSeconds,
-      entries: value.entries,
-    }],
-    warnings: [],
+    ...itinerary,
+    days: itinerary.days.map((day: any) => ({
+      ...day,
+      entries: day.entries.map((entry: any) =>
+        entry.kind === "travel"
+          ? {
+              ...entry,
+              estimate: {
+                ...entry.estimate,
+                // Trips saved before Travel warnings were introduced remain readable.
+                warnings: entry.estimate.warnings ?? [],
+              },
+            }
+          : entry,
+      ),
+    })),
   };
 }
 

@@ -4,6 +4,7 @@ import {
   ArrowRightIcon,
   CalendarDaysIcon,
   MapPinIcon,
+  TriangleAlertIcon,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
@@ -205,6 +206,15 @@ export function ItinerarySurface({
                   <span className="text-sm text-muted-foreground">
                     {formatItineraryTime(entry.startSeconds)}–{formatItineraryTime(entry.endSeconds)} · {formatTravelDuration(entry.estimate.durationSeconds)} · {formatTravelDistance(entry.estimate.distanceMeters)} · {TRANSPORT_MODE_LABELS[entry.estimate.mode]}
                   </span>
+                  {entry.estimate.warnings.map((warning) => (
+                    <span
+                      key={warning.code}
+                      className="flex items-start gap-2 text-sm text-muted-foreground"
+                    >
+                      <TriangleAlertIcon aria-hidden="true" />
+                      {warning.message}
+                    </span>
+                  ))}
                 </div>
               )}
             </div>

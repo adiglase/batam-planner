@@ -146,6 +146,7 @@ function fakeEstimate(
     durationSeconds: 0,
     mode: trip.transportMode!,
     geometry: [origin.coordinates, destination.coordinates],
+    warnings: [],
   };
 }
 

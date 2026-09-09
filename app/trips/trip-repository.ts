@@ -1,5 +1,5 @@
 import type { Destination } from "~/destinations/destination";
-import type { SameDayItinerary } from "~/itineraries/same-day-planner";
+import type { Itinerary } from "~/itineraries/itinerary-planner";
 import type { TransportMode } from "~/routing/routing-provider";
 
 export type SelectedDestination = Pick<
@@ -49,7 +49,7 @@ export type Trip = {
   visitDurationOverrides: Record<string, number>;
   destinationOrder: string[] | null;
   revision: number;
-  itinerary: SameDayItinerary | null;
+  itinerary: Itinerary | null;
 };
 export type TripCollection = { trips: Trip[]; activeTripId: string | null };
 export const TRIPS_KEY = "batam-planner:trips:v1";
@@ -67,7 +67,7 @@ export const reopeningSurface = (trip: Trip) =>
   trip.itinerary ? ("itinerary" as const) : ("trip" as const);
 export function storeBuiltItinerary(
   trip: Trip,
-  itinerary: SameDayItinerary,
+  itinerary: Itinerary,
 ): Trip {
   // A Build result is stale if inputs changed while routing was in flight.
   if (itinerary.inputRevision !== trip.revision) return trip;
@@ -336,54 +336,97 @@ function isAccommodationRef(value: unknown): value is AccommodationRef {
   );
 }
 
-function isSameDayItinerary(value: unknown): value is SameDayItinerary {
-  if (!value || typeof value !== "object") return false;
-  const itinerary = value as SameDayItinerary;
+function isItineraryEntry(entry: any) {
   if (
-    !Number.isInteger(itinerary.inputRevision) ||
-    typeof itinerary.date !== "string" ||
-    !Number.isFinite(itinerary.startSeconds) ||
-    !Number.isFinite(itinerary.endSeconds) ||
-    !Array.isArray(itinerary.entries)
-  ) {
-    return false;
-  }
-  return itinerary.entries.every((entry) => {
-    if (!entry || typeof entry !== "object") return false;
-    if (
-      !Number.isFinite(entry.startSeconds) ||
-      !Number.isFinite(entry.endSeconds) ||
-      entry.endSeconds < entry.startSeconds
-    ) {
-      return false;
-    }
-    if (entry.kind === "visit") {
-      return (
-        typeof entry.destinationId === "string" &&
-        typeof entry.destinationName === "string" &&
-        Number.isInteger(entry.durationMinutes) &&
-        entry.durationMinutes > 0
-      );
-    }
+    !entry ||
+    typeof entry !== "object" ||
+    !Number.isFinite(entry.startSeconds) ||
+    !Number.isFinite(entry.endSeconds) ||
+    entry.endSeconds < entry.startSeconds
+  ) return false;
+  if (entry.kind === "visit") {
     return (
-      entry.kind === "travel" &&
-      !!entry.origin &&
-      typeof entry.origin.name === "string" &&
-      !!entry.destination &&
-      typeof entry.destination.name === "string" &&
-      !!entry.estimate &&
-      Number.isFinite(entry.estimate.distanceMeters) &&
-      Number.isFinite(entry.estimate.durationSeconds) &&
-      TRANSPORT_MODES.includes(entry.estimate.mode) &&
-      Array.isArray(entry.estimate.geometry) &&
-      entry.estimate.geometry.every(
-        (point) =>
-          point &&
-          Number.isFinite(point.latitude) &&
-          Number.isFinite(point.longitude),
-      )
+      typeof entry.destinationId === "string" &&
+      typeof entry.destinationName === "string" &&
+      Number.isInteger(entry.durationMinutes) &&
+      entry.durationMinutes > 0
     );
-  });
+  }
+  return (
+    entry.kind === "travel" &&
+    !!entry.origin &&
+    typeof entry.origin.name === "string" &&
+    !!entry.destination &&
+    typeof entry.destination.name === "string" &&
+    !!entry.estimate &&
+    Number.isFinite(entry.estimate.distanceMeters) &&
+    Number.isFinite(entry.estimate.durationSeconds) &&
+    TRANSPORT_MODES.includes(entry.estimate.mode) &&
+    Array.isArray(entry.estimate.geometry) &&
+    entry.estimate.geometry.every(
+      (point: any) =>
+        point &&
+        Number.isFinite(point.latitude) &&
+        Number.isFinite(point.longitude),
+    )
+  );
+}
+
+function isItineraryDay(day: any) {
+  return (
+    day &&
+    typeof day.date === "string" &&
+    Number.isFinite(day.startSeconds) &&
+    Number.isFinite(day.endSeconds) &&
+    day.endSeconds >= day.startSeconds &&
+    Array.isArray(day.entries) &&
+    day.entries.every(isItineraryEntry)
+  );
+}
+
+function isItinerary(value: unknown): value is Itinerary {
+  if (!value || typeof value !== "object") return false;
+  const itinerary = value as Itinerary;
+  return (
+    Number.isInteger(itinerary.inputRevision) &&
+    Array.isArray(itinerary.days) &&
+    itinerary.days.length >= 1 &&
+    itinerary.days.length <= MAX_TRIP_DAYS &&
+    itinerary.days.every(isItineraryDay) &&
+    Array.isArray(itinerary.warnings) &&
+    itinerary.warnings.every(
+      (warning) =>
+        warning?.code === "missing-accommodation" &&
+        typeof warning.message === "string",
+    )
+  );
+}
+
+function isLegacySameDayItinerary(value: any) {
+  return (
+    value &&
+    Number.isInteger(value.inputRevision) &&
+    typeof value.date === "string" &&
+    Number.isFinite(value.startSeconds) &&
+    Number.isFinite(value.endSeconds) &&
+    Array.isArray(value.entries) &&
+    value.entries.every(isItineraryEntry)
+  );
+}
+
+function normalizeItinerary(value: any): Itinerary | null {
+  if (value === null) return null;
+  if (isItinerary(value)) return value;
+  return {
+    inputRevision: value.inputRevision,
+    days: [{
+      date: value.date,
+      startSeconds: value.startSeconds,
+      endSeconds: value.endSeconds,
+      entries: value.entries,
+    }],
+    warnings: [],
+  };
 }
 
 function isBoundary(value: unknown): value is TripBoundary {
@@ -444,7 +487,7 @@ function isTrip(value: unknown): value is Trip {
         t.destinationOrder.every((id) =>
           t.destinations.some((destination) => destination.id === id),
         ))) &&
-    (t.itinerary === null || isSameDayItinerary(t.itinerary)) &&
+    (t.itinerary === null || isItinerary(t.itinerary) || isLegacySameDayItinerary(t.itinerary)) &&
     Array.isArray(t.destinations) &&
     t.destinations.every(
       (d) =>
@@ -514,6 +557,7 @@ export class TripRepository {
               shortWalkMinutes: trip.shortWalkMinutes ?? 0,
               visitDurationOverrides: trip.visitDurationOverrides ?? {},
               destinationOrder: trip.destinationOrder ?? null,
+              itinerary: normalizeItinerary(trip.itinerary),
             };
             return normalized.dailyWindows.length > 0
               ? normalized

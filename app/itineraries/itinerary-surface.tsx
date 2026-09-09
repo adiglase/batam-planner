@@ -34,9 +34,9 @@ import {
 import type { TripControls } from "~/trips/trip-controls";
 import { tripStatus } from "~/trips/trip-repository";
 import {
-  buildSameDayItinerary,
+  buildItinerary,
   formatItineraryTime,
-} from "./same-day-planner";
+} from "./itinerary-planner";
 
 export function ItinerarySurface({
   trips,
@@ -51,12 +51,14 @@ export function ItinerarySurface({
 }) {
   const [building, setBuilding] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState(0);
   const trip = trips.activeTrip;
 
   useEffect(() => {
     setFailure(null);
     setBuilding(false);
-  }, [trip?.id]);
+    setSelectedDay(0);
+  }, [trip?.id, trip?.itinerary?.inputRevision]);
 
   if (!trip) {
     return (
@@ -73,7 +75,7 @@ export function ItinerarySurface({
     if (!trip || building) return;
     setBuilding(true);
     setFailure(null);
-    const result = await buildSameDayItinerary(
+    const result = await buildItinerary(
       trip,
       routingProvider,
       publishedDestinations,
@@ -103,7 +105,7 @@ export function ItinerarySurface({
         <Empty className="border bg-card">
           <EmptyHeader>
             <CalendarDaysIcon aria-hidden="true" />
-            <EmptyTitle>Build your same-day Itinerary</EmptyTitle>
+            <EmptyTitle>Build your Itinerary</EmptyTitle>
             <EmptyDescription>
               Every selected Destination and all terminal Travel must fit before a complete Itinerary is saved.
             </EmptyDescription>
@@ -123,16 +125,15 @@ export function ItinerarySurface({
     );
   }
 
+  const day = itinerary.days[Math.min(selectedDay, itinerary.days.length - 1)];
   return (
     <div className="flex flex-col gap-4">
       <header className="surface-intro surface-intro-compact">
         <Badge variant="secondary">
           {needsRebuilding ? "Needs rebuilding" : "Itinerary ready"}
         </Badge>
-        <h1>{itinerary.date}</h1>
-        <p>
-          {formatItineraryTime(itinerary.startSeconds)}–{formatItineraryTime(itinerary.endSeconds)} · Traffic-unaware estimates, non-live and not guaranteed.
-        </p>
+        <h1>{itinerary.days.length === 1 ? day.date : `${itinerary.days[0].date}–${itinerary.days.at(-1)!.date}`}</h1>
+        <p>Traffic-unaware estimates, non-live and not guaranteed.</p>
       </header>
       {needsRebuilding && (
         <Alert>
@@ -150,15 +151,40 @@ export function ItinerarySurface({
           <AlertDescription>{failure}</AlertDescription>
         </Alert>
       )}
+      {itinerary.warnings.map((warning) => (
+        <Alert key={warning.code}>
+          <AlertCircleIcon aria-hidden="true" />
+          <AlertTitle>Accommodation not set</AlertTitle>
+          <AlertDescription>{warning.message}</AlertDescription>
+        </Alert>
+      ))}
+      {itinerary.days.length > 1 && (
+        <div className="flex flex-wrap gap-2" aria-label="Itinerary days">
+          {itinerary.days.map((item, index) => (
+            <Button
+              key={item.date}
+              size="sm"
+              variant={index === selectedDay ? "default" : "outline"}
+              aria-pressed={index === selectedDay}
+              onClick={() => setSelectedDay(index)}
+            >
+              Day {index + 1} · {item.date}
+            </Button>
+          ))}
+        </div>
+      )}
       <Card>
         <CardHeader>
-          <CardTitle>Day timeline</CardTitle>
+          <CardTitle>Day timeline · {day.date}</CardTitle>
           <CardDescription>
-            Visits and Travel are shown chronologically with no added ferry, pickup, parking, or uncertainty buffers.
+            {formatItineraryTime(day.startSeconds)}–{formatItineraryTime(day.endSeconds)} · Visits and Travel are shown chronologically with no added buffers.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          {itinerary.entries.map((entry, index) => (
+          {day.entries.length === 0 && (
+            <p className="text-sm text-muted-foreground">No Visits or Travel scheduled for this day.</p>
+          )}
+          {day.entries.map((entry, index) => (
             <div key={`${entry.kind}-${index}`} className="flex flex-col gap-3">
               {index > 0 && <Separator />}
               {entry.kind === "visit" ? (

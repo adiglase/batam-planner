@@ -9,7 +9,7 @@ import {
   toggleDestination,
   useCurrentDestinationOrder,
 } from "~/trips/trip-repository";
-import { buildSameDayItinerary } from "./same-day-planner";
+import { buildItinerary as buildSameDayItinerary } from "./itinerary-planner";
 
 const beach: Destination = {
   id: "beach",
@@ -60,7 +60,7 @@ function routing(durationSeconds = 600): RoutingProvider & {
   };
 }
 
-describe("same-day Itinerary Build", () => {
+describe("one-day Itinerary Build", () => {
   it("schedules every Destination exactly once with terminal Travel and exact provider facts", async () => {
     const provider = routing();
     const trip = completeTrip();
@@ -70,18 +70,18 @@ describe("same-day Itinerary Build", () => {
     if (!result.ok) return;
     expect(provider.estimateTravel).toHaveBeenCalledTimes(6);
     expect(result.itinerary.inputRevision).toBe(trip.revision);
-    expect(result.itinerary.startSeconds).toBe(9 * 3600);
-    expect(result.itinerary.endSeconds).toBe(11 * 3600);
-    expect(result.itinerary.entries.map((entry) => entry.kind)).toEqual([
+    expect(result.itinerary.days[0].startSeconds).toBe(9 * 3600);
+    expect(result.itinerary.days[0].endSeconds).toBe(11 * 3600);
+    expect(result.itinerary.days[0].entries.map((entry) => entry.kind)).toEqual([
       "travel",
       "visit",
       "travel",
       "visit",
       "travel",
     ]);
-    const visits = result.itinerary.entries.filter((entry) => entry.kind === "visit");
+    const visits = result.itinerary.days[0].entries.filter((entry) => entry.kind === "visit");
     expect(visits.map(({ destinationId }) => destinationId)).toEqual(["beach", "temple"]);
-    const travels = result.itinerary.entries.filter((entry) => entry.kind === "travel");
+    const travels = result.itinerary.days[0].entries.filter((entry) => entry.kind === "travel");
     expect(travels[0].estimate).toEqual({
       distanceMeters: 4200,
       durationSeconds: 600,
@@ -97,20 +97,18 @@ describe("same-day Itinerary Build", () => {
   });
 
   it("returns no partial Itinerary when a required route is unavailable", async () => {
-    let request = 0;
     const provider: RoutingProvider = {
-      estimateTravel: async ({ origin, destination, mode }) => {
-        request += 1;
-        return request === 2
+      estimateTravel: async ({ origin, destination, mode }) =>
+        origin.latitude === beach.coordinates.latitude &&
+        destination.latitude === temple.coordinates.latitude
           ? null
-          : { distanceMeters: 1, durationSeconds: 1, geometry: [origin, destination], mode };
-      },
+          : { distanceMeters: 1, durationSeconds: 1, geometry: [origin, destination], mode },
     };
     const trip = useCurrentDestinationOrder(completeTrip());
     await expect(buildSameDayItinerary(trip, provider)).resolves.toEqual({
       ok: false,
       code: "unavailable-route",
-      message: "Travel from Beach to Temple is unavailable.",
+      message: "No complete Travel route connects every required terminal, Accommodation, and Destination anchor.",
     });
     expect(trip.itinerary).toBeNull();
   });
@@ -145,7 +143,7 @@ describe("same-day Itinerary Build", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(
-      result.itinerary.entries
+      result.itinerary.days[0].entries
         .filter((entry) => entry.kind === "visit")
         .map((entry) => entry.destinationId),
     ).toEqual(["temple", "beach"]);
@@ -176,7 +174,7 @@ describe("same-day Itinerary Build", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(
-      result.itinerary.entries
+      result.itinerary.days[0].entries
         .filter((entry) => entry.kind === "travel")
         .map((entry) => entry.estimate.mode),
     ).toEqual(["walking", "car"]);

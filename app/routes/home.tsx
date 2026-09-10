@@ -75,6 +75,11 @@ import {
 import { BATAM_MAP_CENTER } from "~/geography/coordinates";
 import { ConfiguredMap } from "~/map/configured-map";
 import { ItinerarySurface } from "~/itineraries/itinerary-surface";
+import {
+  fitRouteViewport,
+  itineraryCoordinates,
+  itineraryDayPresentation,
+} from "~/itineraries/itinerary-workspace";
 import { isAccommodation } from "~/trips/trip-repository";
 import { browserRoutingProvider } from "~/routing/browser-routing-provider";
 import type { RoutingProvider } from "~/routing/routing-provider";
@@ -126,6 +131,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   const [focusedId, setFocusedId] = useState<string | null>(
     destinations[0]?.id ?? null,
   );
+  const [itineraryDayIndex, setItineraryDayIndex] = useState(0);
+  const [focusedItineraryElement, setFocusedItineraryElement] = useState<
+    string | null
+  >(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -205,6 +214,17 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     restoreRef.current = null;
   }, [trips.ready, trips.activeTripId]);
 
+  // Day selection and Itinerary focus are view state. They reset when the
+  // active Trip or its Itinerary revision changes and never touch Trip data.
+  useEffect(() => {
+    setItineraryDayIndex(0);
+    setFocusedItineraryElement(null);
+  }, [
+    trips.activeTripId,
+    trips.activeTrip?.revision,
+    trips.activeTrip?.itinerary?.inputRevision,
+  ]);
+
   const availableCategories = useMemo(() => {
     const present = new Set(
       destinations.map(({ primaryCategory }) => primaryCategory),
@@ -255,6 +275,30 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       })),
     [results],
   );
+
+  // Presenting an Itinerary replaces the Destination collection with only
+  // the selected day's ordered route, including its terminal or
+  // Accommodation anchors. Deriving it here keeps the map and the timeline
+  // reading the same read-only presentation.
+  const activeItinerary = trips.activeTrip?.itinerary ?? null;
+  const itineraryPresentation = useMemo(() => {
+    if (activeSurface !== "itinerary" || !activeItinerary || !trips.activeTrip) {
+      return null;
+    }
+    return itineraryDayPresentation(
+      activeItinerary,
+      itineraryDayIndex,
+      itineraryCoordinates(trips.activeTrip),
+    );
+  }, [activeSurface, activeItinerary, itineraryDayIndex, trips.activeTrip]);
+
+  // Fitting the map to the selected day is view-only. The presentation is
+  // stable across focus and hover, so this runs once per day or Rebuild.
+  useEffect(() => {
+    if (!itineraryPresentation) return;
+    const fit = fitRouteViewport(itineraryPresentation.markers);
+    if (fit) setMapViewport(fit);
+  }, [itineraryPresentation]);
 
   const discoverViewport = useCallback(
     () =>
@@ -506,13 +550,22 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       >
         <section className="map-region" aria-label="Batam Destination map">
           <ConfiguredMap
-            markers={mapMarkers}
-            focusedDestinationId={focusedDestination?.id ?? null}
+            markers={itineraryPresentation?.markers ?? mapMarkers}
+            focusedElementId={
+              itineraryPresentation
+                ? focusedItineraryElement
+                : focusedDestination?.id ?? null
+            }
+            route={itineraryPresentation?.route ?? null}
             viewport={mapViewport}
             visibleBounds={visibleBounds}
             onViewportChange={updateMapViewport}
-            onOpenDestination={openFromMap}
-            onFocusDestination={focusDestination}
+            onOpenDestination={itineraryPresentation ? undefined : openFromMap}
+            onFocusElement={
+              itineraryPresentation
+                ? setFocusedItineraryElement
+                : focusDestination
+            }
           />
           {trips.editing && viewingDestination && (
             <div className="trip-map-selection">
@@ -734,6 +787,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                   routingProvider={browserRoutingProvider}
                   publishedDestinations={destinations}
                   onReviewTrip={reviewTripInput}
+                  dayIndex={itineraryDayIndex}
+                  onSelectDay={setItineraryDayIndex}
+                  focusedElementId={focusedItineraryElement}
+                  onFocusElement={setFocusedItineraryElement}
                 />
               </div>
             </ScrollArea>

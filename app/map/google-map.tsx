@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { CLUSTER_MAX_ZOOM, clusterMarkers, isClusterActive } from "~/discovery/discovery";
+import { CLUSTER_MAX_ZOOM, clusterMarkers, isClusterActive, singleMarkerClusters } from "~/discovery/discovery";
 import type { DestinationCluster } from "~/discovery/discovery";
-import type { MapBounds, MapPresentation, MapViewport } from "./map-provider";
+import type { MapBounds, MapMarker, MapPresentation, MapViewport } from "./map-provider";
 
 type GoogleMapInstance = {
   addListener(event: "idle", listener: () => void): { remove(): void };
@@ -27,6 +27,13 @@ type GoogleMarkerInstance = {
   setZIndex(zIndex: number): void;
   setMap(map: null): void;
 };
+type GooglePolylineInstance = {
+  addListener(
+    event: "click",
+    listener: () => void,
+  ): { remove?(): void } | undefined;
+  setMap(map: null): void;
+};
 type GoogleMapsApi = {
   Map: new (
     element: HTMLElement,
@@ -45,6 +52,15 @@ type GoogleMapsApi = {
     opacity?: number;
     zIndex?: number;
   }) => GoogleMarkerInstance;
+  Polyline: new (options: {
+    map: GoogleMapInstance;
+    path: { lat: number; lng: number }[];
+    strokeColor: string;
+    strokeOpacity: number;
+    strokeWeight: number;
+    zIndex: number;
+    clickable: boolean;
+  }) => GooglePolylineInstance;
 };
 
 declare global {
@@ -77,30 +93,46 @@ export function isMapViewportSynced(
   );
 }
 
-function markerIconUrl(selected: boolean) {
+function markerIconUrl(
+  selected: boolean,
+  label?: string,
+  tone: "highlight" | "primary" = "highlight",
+) {
   const pin =
     "M20 3 C10 3 3 10 3 19 C3 30 20 49 20 49 C20 49 37 30 37 19 C37 10 30 3 20 3 Z";
   const selectedPin =
     "M24 4 C12 4 4 12 4 23 C4 36 24 59 24 59 C24 59 44 36 44 23 C44 12 36 4 24 4 Z";
+  const fill = tone === "primary" ? MARKER_RING : MARKER_FILL;
+  const glyph = label
+    ? selected
+      ? `<text x='24' y='28' text-anchor='middle' font-family='sans-serif' font-size='14' font-weight='700' fill='white'>${label}</text>`
+      : `<text x='20' y='24' text-anchor='middle' font-family='sans-serif' font-size='13' font-weight='700' fill='white'>${label}</text>`
+    : selected
+      ? `<circle cx='24' cy='23' r='6' fill='white' stroke='${MARKER_RING}' stroke-width='2'/>`
+      : `<circle cx='20' cy='19' r='5' fill='white'/>`;
   const svg = selected
-    ? `<svg xmlns='http://www.w3.org/2000/svg' width='48' height='63' viewBox='0 0 48 63'><defs><filter id='sel' x='-40%' y='-40%' width='180%' height='180%'><feDropShadow dx='0' dy='2.5' stdDeviation='3' flood-color='#0B1F20' flood-opacity='0.5'/></filter></defs><circle cx='24' cy='23' r='21' fill='${MARKER_RING}' fill-opacity='0.22'/><g filter='url(#sel)'><path d='${selectedPin}' fill='white'/><path d='${selectedPin}' fill='${MARKER_FILL}' stroke='${MARKER_RING}' stroke-width='4' stroke-linejoin='round'/></g><circle cx='24' cy='23' r='6' fill='white' stroke='${MARKER_RING}' stroke-width='2'/></svg>`
-    : `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='52' viewBox='0 0 40 52'><defs><filter id='base' x='-40%' y='-40%' width='180%' height='180%'><feDropShadow dx='0' dy='2' stdDeviation='2.5' flood-color='#0B1F20' flood-opacity='0.5'/></filter></defs><g filter='url(#base)'><path d='${pin}' fill='white'/><path d='${pin}' fill='${MARKER_FILL}' stroke='white' stroke-width='2.5' stroke-linejoin='round'/></g><circle cx='20' cy='19' r='5' fill='white'/></svg>`;
+    ? `<svg xmlns='http://www.w3.org/2000/svg' width='48' height='63' viewBox='0 0 48 63'><defs><filter id='sel' x='-40%' y='-40%' width='180%' height='180%'><feDropShadow dx='0' dy='2.5' stdDeviation='3' flood-color='#0B1F20' flood-opacity='0.5'/></filter></defs><circle cx='24' cy='23' r='21' fill='${MARKER_RING}' fill-opacity='0.22'/><g filter='url(#sel)'><path d='${selectedPin}' fill='white'/><path d='${selectedPin}' fill='${fill}' stroke='${MARKER_RING}' stroke-width='4' stroke-linejoin='round'/></g>${glyph}</svg>`
+    : `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='52' viewBox='0 0 40 52'><defs><filter id='base' x='-40%' y='-40%' width='180%' height='180%'><feDropShadow dx='0' dy='2' stdDeviation='2.5' flood-color='#0B1F20' flood-opacity='0.5'/></filter></defs><g filter='url(#base)'><path d='${pin}' fill='white'/><path d='${pin}' fill='${fill}' stroke='white' stroke-width='2.5' stroke-linejoin='round'/></g>${glyph}</svg>`;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function iconForMarker(marker: MapMarker, selected: boolean) {
+  if (marker.kind === "visit") {
+    return markerIconUrl(
+      selected,
+      marker.sequence === undefined ? undefined : String(marker.sequence),
+    );
+  }
+  if (marker.kind === "terminal" || marker.kind === "accommodation") {
+    return markerIconUrl(selected, undefined, "primary");
+  }
+  return markerIconUrl(selected);
 }
 
 function clusterIconUrl(count: number, active: boolean) {
   const label = count > 99 ? "99+" : String(count);
   const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='52' height='52' viewBox='0 0 52 52'><circle cx='26' cy='26' r='22' fill='${active ? MARKER_RING : MARKER_FILL}' stroke='white' stroke-width='3'/><text x='26' y='32' text-anchor='middle' font-family='sans-serif' font-size='16' font-weight='700' fill='white'>${label}</text></svg>`;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
-}
-
-function applyMarkerEmphasis(
-  instance: GoogleMarkerInstance,
-  selected: boolean,
-) {
-  instance.setIcon(markerIconUrl(selected));
-  instance.setZIndex(selected ? 100 : 10);
-  instance.setOpacity(1);
 }
 
 export function googleMapsScriptUrl(apiKey: string) {
@@ -142,11 +174,12 @@ export function loadGoogleMaps(apiKey: string) {
 export function GoogleMap({
   apiKey,
   markers,
-  focusedDestinationId,
+  focusedElementId,
+  route,
   viewport,
   onViewportChange,
   onOpenDestination,
-  onFocusDestination,
+  onFocusElement,
 }: MapPresentation & { apiKey: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [unavailable, setUnavailable] = useState(false);
@@ -155,23 +188,23 @@ export function GoogleMap({
     maps: GoogleMapsApi;
     map: GoogleMapInstance;
   } | null>(null);
-  const focusedMarker = markers.find(({ id }) => id === focusedDestinationId);
+  const focusedMarker = markers.find(({ id }) => id === focusedElementId);
   const openDestinationRef = useRef(onOpenDestination);
   useEffect(() => {
     openDestinationRef.current = onOpenDestination;
   }, [onOpenDestination]);
-  const focusDestinationRef = useRef(onFocusDestination);
+  const focusElementRef = useRef(onFocusElement);
   useEffect(() => {
-    focusDestinationRef.current = onFocusDestination;
-  }, [onFocusDestination]);
+    focusElementRef.current = onFocusElement;
+  }, [onFocusElement]);
   const viewportChangeRef = useRef(onViewportChange);
   useEffect(() => {
     viewportChangeRef.current = onViewportChange;
   }, [onViewportChange]);
-  const focusedIdRef = useRef(focusedDestinationId);
+  const focusedIdRef = useRef(focusedElementId);
   useEffect(() => {
-    focusedIdRef.current = focusedDestinationId;
-  }, [focusedDestinationId]);
+    focusedIdRef.current = focusedElementId;
+  }, [focusedElementId]);
   const markerInstancesRef = useRef(new Map<string, GoogleMarkerInstance>());
   // Latest committed viewport for the async map construction below. Read
   // here instead of closing over the first render's viewport, otherwise a
@@ -182,8 +215,11 @@ export function GoogleMap({
   }, [viewport]);
 
   const clusters = useMemo(
-    () => clusterMarkers(markers, viewport.zoom),
-    [markers, viewport.zoom],
+    () =>
+      route
+        ? singleMarkerClusters(markers)
+        : clusterMarkers(markers, viewport.zoom),
+    [markers, viewport.zoom, route],
   );
   const markerById = useMemo(
     () => new Map(markers.map((marker) => [marker.id, marker])),
@@ -277,15 +313,16 @@ export function GoogleMap({
             lng: marker.coordinates.longitude,
           },
           title: marker.label,
-          icon: markerIconUrl(selected),
+          icon: iconForMarker(marker, selected),
           opacity: 1,
           zIndex: selected ? 100 : 10,
         });
-        const clickListener = instance.addListener("click", () =>
-          openDestinationRef.current(marker.id),
-        );
+        const clickListener = instance.addListener("click", () => {
+          if (openDestinationRef.current) openDestinationRef.current(marker.id);
+          else focusElementRef.current?.(marker.id);
+        });
         const hoverListener = instance.addListener("mouseover", () =>
-          focusDestinationRef.current?.(marker.id),
+          focusElementRef.current?.(marker.id),
         );
         created.push({ instance, listeners: [clickListener, hoverListener] });
         byKey.set(`marker:${marker.id}`, instance);
@@ -345,20 +382,60 @@ export function GoogleMap({
     markerInstancesRef.current.forEach((instance, key) => {
       if (key.startsWith("marker:")) {
         const markerId = key.slice("marker:".length);
-        applyMarkerEmphasis(instance, markerId === focusedDestinationId);
+        const marker = markerById.get(markerId);
+        if (!marker) return;
+        const selected = markerId === focusedElementId;
+        instance.setIcon(iconForMarker(marker, selected));
+        instance.setZIndex(selected ? 100 : 10);
+        instance.setOpacity(1);
         return;
       }
       if (key.startsWith("cluster:")) {
         const clusterId = key.slice("cluster:".length);
         const cluster = clusters.find((entry) => entry.id === clusterId);
         if (!cluster) return;
-        const active = isClusterActive(cluster, focusedDestinationId);
+        const active = isClusterActive(cluster, focusedElementId);
         instance.setIcon(clusterIconUrl(cluster.count, active));
         instance.setZIndex(active ? 90 : 50);
         instance.setOpacity(1);
       }
     });
-  }, [focusedDestinationId, clusters]);
+  }, [focusedElementId, clusters, markerById]);
+
+  // The selected day's ordered Travel geometry. Polylines are recreated
+  // when the route or its emphasis changes so the focused leg stands out.
+  useEffect(() => {
+    if (!mapState || !route || route.legs.length === 0) return;
+    const created: Array<{
+      instance: GooglePolylineInstance;
+      listener?: { remove?(): void };
+    }> = [];
+    for (const leg of route.legs) {
+      const focused = leg.id === focusedElementId;
+      const instance = new mapState.maps.Polyline({
+        map: mapState.map,
+        path: leg.path.map((point) => ({
+          lat: point.latitude,
+          lng: point.longitude,
+        })),
+        strokeColor: focused ? MARKER_FILL : MARKER_RING,
+        strokeOpacity: focused ? 1 : 0.9,
+        strokeWeight: focused ? 7 : 4,
+        zIndex: focused ? 6 : 4,
+        clickable: true,
+      });
+      const listener = instance.addListener("click", () =>
+        focusElementRef.current?.(leg.id),
+      );
+      created.push({ instance, listener });
+    }
+    return () => {
+      created.forEach(({ instance, listener }) => {
+        listener?.remove?.();
+        instance.setMap(null);
+      });
+    };
+  }, [mapState, route, focusedElementId]);
 
   // Drive the map only when it actually drifted from the desired viewport.
   // The previous unconditional setCenter/setZoom re-drove the map on every
@@ -441,7 +518,7 @@ export function GoogleMap({
                   <button
                     type="button"
                     onClick={() => {
-                      openDestinationRef.current(memberId);
+                      openDestinationRef.current?.(memberId);
                       setChooser(null);
                     }}
                   >
@@ -458,9 +535,15 @@ export function GoogleMap({
       ) : null}
       <div className="map-caption" aria-live="polite">
         <strong>
-          {focusedMarker?.label ?? "Explore Batam"}
+          {focusedMarker?.label ??
+            route?.legs.find(({ id }) => id === focusedElementId)?.label ??
+            (route ? "Selected day route" : "Explore Batam")}
         </strong>
-        <span>Traffic-unaware map context</span>
+        <span>
+          {route
+            ? "Traffic-unaware selected-day route"
+            : "Traffic-unaware map context"}
+        </span>
       </div>
     </div>
   );

@@ -424,6 +424,9 @@ export function GoogleMap({
         zIndex: focused ? 6 : 4,
         clickable: true,
       });
+      // Clicking a leg is a pointer shortcut into the same focus state the
+      // timeline rows set by keyboard. Google overlays expose no focusable
+      // DOM node, so the timeline remains the accessible path to this state.
       const listener = instance.addListener("click", () =>
         focusElementRef.current?.(leg.id),
       );

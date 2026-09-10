@@ -370,6 +370,8 @@ function TimelineTravel({
           {warning.message}
         </span>
       ))}
+      {/* The on-trip panel hands over the next leg; per-leg links let a
+          Visitor preview any other leg of the selected day. */}
       <a
         className={buttonVariants({
           variant: isNext ? "default" : "outline",

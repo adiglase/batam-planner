@@ -126,15 +126,21 @@ export function itineraryDayPresentation(
 }
 
 /**
- * A viewport that contains every marker of the selected day with a small
- * margin. Map movement is view-only; it never changes planning data.
+ * A viewport that contains every marker and every route path coordinate of
+ * the selected day with a small margin. Route geometry can bow outside the
+ * endpoints, so fitting markers alone would clip it. Map movement is
+ * view-only; it never changes planning data.
  */
 export function fitRouteViewport(
-  markers: readonly MapMarker[],
+  presentation: Pick<ItineraryDayPresentation, "markers" | "route">,
 ): MapViewport | null {
-  if (markers.length === 0) return null;
-  const latitudes = markers.map(({ coordinates }) => coordinates.latitude);
-  const longitudes = markers.map(({ coordinates }) => coordinates.longitude);
+  const points = [
+    ...presentation.markers.map(({ coordinates }) => coordinates),
+    ...presentation.route.legs.flatMap(({ path }) => path),
+  ];
+  if (points.length === 0) return null;
+  const latitudes = points.map(({ latitude }) => latitude);
+  const longitudes = points.map(({ longitude }) => longitude);
   const north = Math.max(...latitudes);
   const south = Math.min(...latitudes);
   const east = Math.max(...longitudes);

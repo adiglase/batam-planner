@@ -225,6 +225,13 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     trips.activeTrip?.itinerary?.inputRevision,
   ]);
 
+  // Choosing another day is a view change: the previous day's focus id
+  // exists in neither the new timeline nor its map, so it must not linger.
+  const selectItineraryDay = useCallback((index: number) => {
+    setItineraryDayIndex(index);
+    setFocusedItineraryElement(null);
+  }, []);
+
   const availableCategories = useMemo(() => {
     const present = new Set(
       destinations.map(({ primaryCategory }) => primaryCategory),
@@ -296,7 +303,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   // stable across focus and hover, so this runs once per day or Rebuild.
   useEffect(() => {
     if (!itineraryPresentation) return;
-    const fit = fitRouteViewport(itineraryPresentation.markers);
+    const fit = fitRouteViewport(itineraryPresentation);
     if (fit) setMapViewport(fit);
   }, [itineraryPresentation]);
 
@@ -788,7 +795,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                   publishedDestinations={destinations}
                   onReviewTrip={reviewTripInput}
                   dayIndex={itineraryDayIndex}
-                  onSelectDay={setItineraryDayIndex}
+                  onSelectDay={selectItineraryDay}
                   focusedElementId={focusedItineraryElement}
                   onFocusElement={setFocusedItineraryElement}
                 />

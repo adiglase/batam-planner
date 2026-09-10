@@ -218,23 +218,59 @@ describe("Itinerary day map presentation", () => {
 describe("Itinerary map viewport", () => {
   it("fits every marker of the selected day", async () => {
     const { trip, itinerary } = await built(twoDayTrip());
-    const { markers } = itineraryDayPresentation(
+    const presentation = itineraryDayPresentation(
       itinerary,
       0,
       itineraryCoordinates(trip),
     )!;
 
-    const viewport = fitRouteViewport(markers);
+    const viewport = fitRouteViewport(presentation);
     expect(viewport).not.toBeNull();
     if (!viewport) return;
     const bounds = viewportBoundsFromCenterZoom(viewport.center, viewport.zoom);
     expect(
-      markers.every(({ coordinates }) => viewportContainsBounds(bounds, coordinates)),
+      presentation.markers.every(({ coordinates }) =>
+        viewportContainsBounds(bounds, coordinates),
+      ),
     ).toBe(true);
   });
 
+  it("fits route geometry that bows outside the day's markers", () => {
+    const markers = [
+      {
+        id: visitElementId("beach"),
+        label: "Beach",
+        coordinates: beach.coordinates,
+        kind: "visit" as const,
+        sequence: 1,
+      },
+    ];
+    const bow = { latitude: 1.6, longitude: 104.4 };
+
+    const viewport = fitRouteViewport({
+      markers,
+      route: {
+        id: "2026-06-01",
+        legs: [
+          {
+            id: travelElementId("beach", "temple"),
+            label: "Travel from Beach to Temple",
+            path: [beach.coordinates, bow, temple.coordinates],
+          },
+        ],
+      },
+    });
+
+    expect(viewport).not.toBeNull();
+    if (!viewport) return;
+    const bounds = viewportBoundsFromCenterZoom(viewport.center, viewport.zoom);
+    expect(viewportContainsBounds(bounds, bow)).toBe(true);
+  });
+
   it("reports no viewport for an empty day", () => {
-    expect(fitRouteViewport([])).toBeNull();
+    expect(
+      fitRouteViewport({ markers: [], route: { id: "2026-06-01", legs: [] } }),
+    ).toBeNull();
   });
 });
 

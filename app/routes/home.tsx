@@ -214,14 +214,15 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     restoreRef.current = null;
   }, [trips.ready, trips.activeTripId]);
 
-  // Day selection and Itinerary focus are view state. They reset when the
-  // active Trip or its Itinerary revision changes and never touch Trip data.
+  // Day selection and Itinerary focus are view state. Planning edits retain
+  // both the last feasible Itinerary and its selected-day route. Only opening
+  // another Trip or atomically storing a successful Build selects day one of
+  // the replacement Itinerary.
   useEffect(() => {
     setItineraryDayIndex(0);
     setFocusedItineraryElement(null);
   }, [
     trips.activeTripId,
-    trips.activeTrip?.revision,
     trips.activeTrip?.itinerary?.inputRevision,
   ]);
 

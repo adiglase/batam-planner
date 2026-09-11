@@ -210,6 +210,21 @@ export function ItinerarySurface({
           <AlertDescription>{warning.message}</AlertDescription>
         </Alert>
       ))}
+      <div className="itinerary-actions">
+        <Button disabled={building} onClick={build}>
+          {building && <Spinner data-icon="inline-start" />}
+          {building
+            ? needsRebuilding
+              ? "Rebuilding…"
+              : "Building…"
+            : needsRebuilding
+              ? "Rebuild itinerary"
+              : "Build again"}
+        </Button>
+        <Button variant="outline" onClick={() => onReviewTrip()}>
+          Review Trip inputs
+        </Button>
+      </div>
       {itinerary.days.length > 1 && (
         <div className="flex flex-wrap gap-2" aria-label="Itinerary days">
           {itinerary.days.map((item, index) => (
@@ -270,19 +285,6 @@ export function ItinerarySurface({
           </ol>
         </CardContent>
       </Card>
-      <div className="flex flex-wrap gap-2">
-        <Button disabled={building} onClick={build}>
-          {building && <Spinner data-icon="inline-start" />}
-          {building
-            ? "Building…"
-            : needsRebuilding
-              ? "Rebuild itinerary"
-              : "Build again"}
-        </Button>
-        <Button variant="outline" onClick={() => onReviewTrip()}>
-          Review Trip inputs
-        </Button>
-      </div>
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
   useCurrentDestinationOrder,
 } from "~/trips/trip-repository";
 import { buildItinerary } from "./itinerary-planner";
+import { assertCompleteItinerary } from "./itinerary-test-assertions";
 
 const destinations: Destination[] = ["Beach", "Temple", "Spa", "Cafe"].map(
   (name, index) => ({
@@ -77,6 +78,7 @@ describe("multi-day Itinerary contract", () => {
     trip = setDailyWindow(trip, "2026-06-02", "end", "19:00");
 
     const result = await buildItinerary(trip, routing());
+    assertCompleteItinerary(trip, result);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.itinerary.days.map(({ startSeconds }) => startSeconds)).toEqual([
@@ -91,6 +93,7 @@ describe("multi-day Itinerary contract", () => {
     trip = setAccommodation(trip, accommodation, true);
     const result = await buildItinerary(trip, routing());
 
+    assertCompleteItinerary(trip, result);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.itinerary.days).toHaveLength(4);
@@ -117,6 +120,8 @@ describe("multi-day Itinerary contract", () => {
     const first = await buildItinerary(trip, routing());
     const second = await buildItinerary(trip, routing());
 
+    assertCompleteItinerary(trip, first);
+    assertCompleteItinerary(trip, second);
     expect(second).toEqual(first);
     expect(first.ok).toBe(true);
     if (!first.ok) return;
@@ -132,9 +137,14 @@ describe("multi-day Itinerary contract", () => {
   });
 
   it("supports the one-day and four-day boundaries and rejects five days", async () => {
-    const one = await buildItinerary(tripForDates("2026-06-01", "2026-06-01", 1), routing());
-    const four = await buildItinerary(tripForDates("2026-06-01", "2026-06-04", 1), routing());
-    const five = await buildItinerary(tripForDates("2026-06-01", "2026-06-05", 1), routing());
+    const oneDayTrip = tripForDates("2026-06-01", "2026-06-01", 1);
+    const fourDayTrip = tripForDates("2026-06-01", "2026-06-04", 1);
+    const fiveDayTrip = tripForDates("2026-06-01", "2026-06-05", 1);
+    const one = await buildItinerary(oneDayTrip, routing());
+    const four = await buildItinerary(fourDayTrip, routing());
+    const five = await buildItinerary(fiveDayTrip, routing());
+    assertCompleteItinerary(oneDayTrip, one);
+    assertCompleteItinerary(fourDayTrip, four);
     expect(one.ok && one.itinerary.days).toHaveLength(1);
     expect(four.ok && four.itinerary.days).toHaveLength(4);
     expect(five).toMatchObject({ ok: false, code: "unsupported-trip-length" });
@@ -152,6 +162,7 @@ describe("multi-day Itinerary contract", () => {
 
     const result = await buildItinerary(trip, routing());
 
+    assertCompleteItinerary(trip, result);
     expect(result.ok).toBe(true);
     expect(visitsByDay(result)).toEqual([
       ["spa"],
@@ -166,6 +177,7 @@ describe("multi-day Itinerary contract", () => {
 
     const result = await buildItinerary(trip, routing());
 
+    assertCompleteItinerary(trip, result);
     expect(result.ok).toBe(true);
     expect(visitsByDay(result)).toEqual([
       [],

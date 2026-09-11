@@ -157,6 +157,31 @@ describe("browser routing provider", () => {
     );
   });
 
+  it("returns only the provider-independent Travel contract", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        estimate: {
+          distanceMeters: 18500,
+          durationSeconds: 1740,
+          mode: "motorcycle",
+          geometry: [input.origin, input.destination],
+          warnings: [],
+          googleRouteToken: "must-not-escape",
+        },
+      }),
+    );
+
+    await expect(
+      createBrowserRoutingProvider(fetcher).estimateTravel(input),
+    ).resolves.toEqual({
+      distanceMeters: 18500,
+      durationSeconds: 1740,
+      mode: "motorcycle",
+      geometry: [input.origin, input.destination],
+      warnings: [],
+    });
+  });
+
   it("translates malformed or mismatched responses into provider unavailability", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({

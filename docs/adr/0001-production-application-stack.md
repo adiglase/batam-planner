@@ -8,7 +8,9 @@ The first production walking skeleton uses Node.js LTS, TypeScript, React, React
 
 Browser-local Trip persistence will use a versioned JSON envelope in `localStorage` behind a `TripRepository`; its small bounded data set does not yet justify IndexedDB or another dependency. Private owner access uses Google through Better Auth, with first-login email bootstrap followed by stable-subject authorization; see [ADR-0002](0002-google-owner-authentication.md). Visitor registration and multi-user owner roles remain outside the MVP.
 
-Playwright and broad browser automation are deferred by product-owner decision because of their current time cost. Type checking, production builds, focused tests at later domain/provider seams, and manual checks at 390 × 844 and 1440 × 900 are the current walking-skeleton testing approach. The full MVP responsive targets remain 360px phone and 1280px desktop widths. The single browser-level test originally required by issue #13 therefore remains deliberately unmet.
+Playwright and broad browser automation were deferred for the walking skeleton
+because of their initial time cost. [ADR-0003](0003-automate-mvp-browser-verification.md)
+supersedes that testing decision for the MVP release.
 
 Google Routes integration is now provided through the existing routing contract
 for traffic-unaware Accommodation-to-Destination estimates required by issue

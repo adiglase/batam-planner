@@ -26,6 +26,19 @@ function isTravelWarnings(value: unknown): boolean {
   );
 }
 
+function isTravelGeometry(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (point) =>
+        !!point &&
+        typeof point === "object" &&
+        Number.isFinite((point as { latitude?: unknown }).latitude) &&
+        Number.isFinite((point as { longitude?: unknown }).longitude),
+    )
+  );
+}
+
 function isTravelEstimateResponse(
   value: unknown,
   requestedMode: TravelEstimate["mode"],
@@ -46,7 +59,7 @@ function isTravelEstimateResponse(
     Number.isFinite(estimate.durationSeconds) &&
     estimate.durationSeconds >= 0 &&
     estimate.mode === requestedMode &&
-    Array.isArray(estimate.geometry) &&
+    isTravelGeometry(estimate.geometry) &&
     isTravelWarnings(estimate.warnings)
   );
 }
@@ -77,7 +90,21 @@ export function createBrowserRoutingProvider(
       }
       if (data.failure) throw new RoutingFailure(data.failure);
       if (!response.ok) throw new RoutingFailure("provider-unavailable");
-      return data.estimate;
+      if (data.estimate === null) return null;
+      const estimate = data.estimate;
+      return {
+        distanceMeters: estimate.distanceMeters,
+        durationSeconds: estimate.durationSeconds,
+        mode: estimate.mode,
+        geometry: estimate.geometry.map(({ latitude, longitude }) => ({
+          latitude,
+          longitude,
+        })),
+        warnings: estimate.warnings.map(({ code, message }) => ({
+          code,
+          message,
+        })),
+      };
     },
   };
 }

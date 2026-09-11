@@ -16,6 +16,7 @@ import {
   useCurrentDestinationOrder,
 } from "~/trips/trip-repository";
 import { buildItinerary } from "./itinerary-planner";
+import { assertCompleteItinerary } from "./itinerary-test-assertions";
 import {
   anchorElementId,
   batamClock,
@@ -102,6 +103,7 @@ function twoDayTrip() {
 
 async function built(trip = singleDayTrip()) {
   const result = await buildItinerary(trip, routing());
+  assertCompleteItinerary(trip, result);
   if (!result.ok) throw new Error(result.message);
   return { trip: storeBuiltItinerary(trip, result.itinerary), itinerary: result.itinerary };
 }
@@ -394,6 +396,7 @@ describe("explicit Itinerary Rebuilds", () => {
   it("preserves the selected-day result through a failed Rebuild and replaces it only after success", async () => {
     const initial = twoDayTrip();
     const firstBuild = await buildItinerary(initial, routing());
+    assertCompleteItinerary(initial, firstBuild);
     expect(firstBuild.ok).toBe(true);
     if (!firstBuild.ok) return;
 
@@ -461,6 +464,7 @@ describe("explicit Itinerary Rebuilds", () => {
     expect(corrected.itinerary).toBe(reopenedNeedsRebuilding.itinerary);
 
     const successfulRebuild = await buildItinerary(corrected, routing());
+    assertCompleteItinerary(corrected, successfulRebuild);
     expect(successfulRebuild.ok).toBe(true);
     if (!successfulRebuild.ok) return;
     const rebuilt = storeBuiltItinerary(

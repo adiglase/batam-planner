@@ -7,6 +7,9 @@
 # React Router
 /.react-router/
 /build/
+/test-results/
+/playwright-report/
+/artifacts/*.webm
 
 # Local application data
 /.data/

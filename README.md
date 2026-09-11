@@ -112,13 +112,22 @@ carry over: sign in again after upgrading.
 
 ```bash
 npm test
+npm run test:e2e
 npm run typecheck
 npm run build
 ```
 
-Browser-level automation is deliberately deferred for the initial walking
-skeleton. This slice was checked manually at 390 × 844 and 1440 × 900. The full
-MVP responsive targets remain 360px phone and 1280px desktop widths.
+Browser verification uses installed Google Chrome at the MVP's 360px phone and
+1280px desktop widths. Optional WebKit regression coverage is available with
+`npm run test:e2e:webkit` after `npx playwright install --with-deps webkit`.
+The suites use isolated local data and deterministic routing responses; they do
+not require Google credentials. Actual Safari results belong in the owner-run
+matrix because Playwright WebKit is not Safari.
+
+Run `npm run demo:record` to create a repeatable app walkthrough at
+`artifacts/batam-planner-demo.webm`. Actual-browser, owner workflow, Batam route,
+and launch-content sign-off are recorded in
+[`docs/release/mvp-verification.md`](docs/release/mvp-verification.md).
 
 ## Production
 

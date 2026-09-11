@@ -12,6 +12,7 @@ import {
   useCurrentDestinationOrder,
 } from "~/trips/trip-repository";
 import { buildItinerary as buildSameDayItinerary } from "./itinerary-planner";
+import { assertCompleteItinerary } from "./itinerary-test-assertions";
 
 const beach: Destination = {
   id: "beach",
@@ -69,6 +70,7 @@ describe("one-day Itinerary Build", () => {
     const trip = completeTrip();
     const result = await buildSameDayItinerary(trip, provider);
 
+    assertCompleteItinerary(trip, result);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(provider.estimateTravel).toHaveBeenCalledTimes(6);
@@ -95,8 +97,11 @@ describe("one-day Itinerary Build", () => {
   });
 
   it("reproduces the identical result for identical inputs and routing facts", async () => {
-    const first = await buildSameDayItinerary(completeTrip(), routing());
-    const second = await buildSameDayItinerary(completeTrip(), routing());
+    const trip = completeTrip();
+    const first = await buildSameDayItinerary(trip, routing());
+    const second = await buildSameDayItinerary(trip, routing());
+    assertCompleteItinerary(trip, first);
+    assertCompleteItinerary(trip, second);
     expect(second).toEqual(first);
   });
 
@@ -199,6 +204,7 @@ describe("one-day Itinerary Build", () => {
 
     const result = await buildSameDayItinerary(trip, routing(60), destinations);
 
+    assertCompleteItinerary(trip, result);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.itinerary.days[0].entries.filter(({ kind }) => kind === "visit")).toHaveLength(10);
@@ -223,8 +229,10 @@ describe("one-day Itinerary Build", () => {
         warnings: [],
       }),
     };
-    const result = await buildSameDayItinerary(completeTrip(), provider);
+    const trip = completeTrip();
+    const result = await buildSameDayItinerary(trip, provider);
 
+    assertCompleteItinerary(trip, result);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(
@@ -253,8 +261,10 @@ describe("one-day Itinerary Build", () => {
       }),
     };
 
-    const result = await buildSameDayItinerary(completeTrip(), provider);
+    const trip = completeTrip();
+    const result = await buildSameDayItinerary(trip, provider);
 
+    assertCompleteItinerary(trip, result);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(
@@ -270,10 +280,8 @@ describe("one-day Itinerary Build", () => {
       destinationOrder: [temple.id, beach.id],
     };
     const manual = await buildSameDayItinerary(manuallyOrdered, routing());
-    const optimized = await buildSameDayItinerary(
-      optimizeDestinationOrder(manuallyOrdered),
-      routing(),
-    );
+    const optimizedTrip = optimizeDestinationOrder(manuallyOrdered);
+    const optimized = await buildSameDayItinerary(optimizedTrip, routing());
     const visitIds = (result: Awaited<ReturnType<typeof buildSameDayItinerary>>) =>
       result.ok
         ? result.itinerary.days[0].entries
@@ -281,6 +289,8 @@ describe("one-day Itinerary Build", () => {
             .map((entry) => entry.destinationId)
         : [];
 
+    assertCompleteItinerary(manuallyOrdered, manual);
+    assertCompleteItinerary(optimizedTrip, optimized);
     expect(visitIds(manual)).toEqual(["temple", "beach"]);
     expect(visitIds(optimized)).toEqual(["beach", "temple"]);
   });
@@ -315,6 +325,7 @@ describe("one-day Itinerary Build", () => {
       };
       const result = await buildSameDayItinerary(trip, provider);
 
+      assertCompleteItinerary(trip, result);
       expect(result.ok).toBe(true);
       if (!result.ok) return;
       expect(
@@ -339,6 +350,7 @@ describe("one-day Itinerary Build", () => {
       const provider = routing();
       const result = await buildSameDayItinerary(trip, provider);
 
+      assertCompleteItinerary(trip, result);
       expect(result.ok).toBe(true);
       if (!result.ok) return;
       expect(provider.estimateTravel.mock.calls.every(([input]) => input.mode === mode)).toBe(true);
@@ -420,6 +432,7 @@ describe("one-day Itinerary Build", () => {
       ),
     };
     const result = await buildSameDayItinerary(trip, routing());
+    assertCompleteItinerary(trip, result);
     expect(result.ok).toBe(true);
   });
 });

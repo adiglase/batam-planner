@@ -6,6 +6,7 @@ import {
   emptyCollection,
   moveDestination,
   optimizeDestinationOrder,
+  reconcileDestinationFacts,
   removeSelectedDestination,
   setAccommodation,
   setBoundary,
@@ -28,7 +29,7 @@ import type {
   TripCollection,
 } from "./trip-repository";
 
-export function useTrips() {
+export function useTrips(publishedDestinations: readonly Destination[]) {
   const repository = useRef<TripRepository | null>(null);
   const current = useRef<TripCollection>(emptyCollection());
   const [collection, setCollection] = useState(current.current);
@@ -38,11 +39,18 @@ export function useTrips() {
   useEffect(() => {
     repository.current = new TripRepository();
     const loaded = repository.current.load();
-    current.current = loaded.collection;
-    setCollection(loaded.collection);
-    setFailed(loaded.failed);
+    const reconciled = reconcileDestinationFacts(
+      loaded.collection,
+      publishedDestinations,
+    );
+    current.current = reconciled;
+    setCollection(reconciled);
+    setFailed(
+      loaded.failed ||
+        (reconciled !== loaded.collection && !repository.current.save(reconciled)),
+    );
     setReady(true);
-  }, []);
+  }, [publishedDestinations]);
   function commit(next: TripCollection) {
     if (!ready) return;
     current.current = next;

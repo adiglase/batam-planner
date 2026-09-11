@@ -200,6 +200,21 @@ export function ItinerarySurface({
           </AlertDescription>
         </Alert>
       )}
+      {trip.destinationNotices.length > 0 && (
+        <Alert variant="destructive">
+          <TriangleAlertIcon aria-hidden="true" />
+          <AlertTitle>Destination changes need your attention</AlertTitle>
+          <AlertDescription>
+            <ul className="list-disc pl-5">
+              {trip.destinationNotices.map((notice) => (
+                <li key={notice.destinationId}>
+                  {notice.destinationName}: {notice.reason}.
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
       {failure && (
         <BuildFailureAlert failure={failure} onReviewTrip={onReviewTrip} />
       )}

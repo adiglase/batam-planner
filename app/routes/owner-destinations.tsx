@@ -1,4 +1,4 @@
-import { FilePenLineIcon, LogOutIcon, PlusIcon, SearchIcon } from "lucide-react";
+import { ArchiveIcon, FilePenLineIcon, LogOutIcon, PlusIcon, SearchIcon } from "lucide-react";
 import { Form, Link, redirect } from "react-router";
 
 import type { Route } from "./+types/owner-destinations";
@@ -49,6 +49,11 @@ export async function action({ request }: Route.ActionArgs) {
     const destinationId = String(formData.get("destinationId") ?? "");
     const draft = repository.startReplacementDraft(destinationId);
     return redirect(`/owner/destinations/${draft.id}`);
+  }
+  if (intent === "archive") {
+    const destinationId = String(formData.get("destinationId") ?? "");
+    repository.archiveDestination(destinationId);
+    return redirect("/owner/destinations?archived=1");
   }
   throw new Response("Unknown owner action", { status: 400 });
 }
@@ -118,11 +123,13 @@ export default function OwnerDestinations({ loaderData }: Route.ComponentProps) 
                         ? "Published Destination · replacement Draft Destination in progress"
                         : item.draft
                           ? "Private Draft Destination"
-                          : "Published Destination"}
+                          : item.lifecycleStatus === "Archived"
+                            ? "Archived Destination · hidden from discovery"
+                            : "Published Destination"}
                     </CardDescription>
                     <CardAction>
                       <Badge variant={item.draft ? "secondary" : "outline"}>
-                        {item.draft ? "Draft" : "Published"}
+                        {item.draft ? "Draft" : item.lifecycleStatus ?? "Published"}
                       </Badge>
                     </CardAction>
                   </CardHeader>
@@ -131,19 +138,36 @@ export default function OwnerDestinations({ loaderData }: Route.ComponentProps) 
                       {item.draft?.candidate.description || item.published?.description || "No description yet."}
                     </p>
                   </CardContent>
-                  <CardFooter>
+                  <CardFooter className="flex flex-wrap gap-2">
                     {item.draft ? (
-                      <Link className={buttonVariants({ variant: "outline", className: "w-full" })} to={`/owner/destinations/${item.draft.id}`}>
-                        <FilePenLineIcon data-icon="inline-start" />
-                        Edit Draft Destination
-                      </Link>
-                    ) : (
-                      <Form method="post" className="w-full">
-                        <input type="hidden" name="destinationId" value={item.destinationId} />
-                        <Button type="submit" className="w-full" variant="outline" name="intent" value="edit-published">
+                      <>
+                        <Link className={buttonVariants({ variant: "outline", className: "flex-1" })} to={`/owner/destinations/${item.draft.id}`}>
                           <FilePenLineIcon data-icon="inline-start" />
-                          Edit Published Destination
+                          Edit Draft Destination
+                        </Link>
+                        {item.lifecycleStatus === "Published" && (
+                          <Form method="post">
+                            <input type="hidden" name="destinationId" value={item.destinationId} />
+                            <Button type="submit" variant="destructive" name="intent" value="archive">
+                              <ArchiveIcon data-icon="inline-start" />
+                              Archive
+                            </Button>
+                          </Form>
+                        )}
+                      </>
+                    ) : (
+                      <Form method="post" className="flex w-full flex-wrap gap-2">
+                        <input type="hidden" name="destinationId" value={item.destinationId} />
+                        <Button type="submit" className="flex-1" variant="outline" name="intent" value="edit-published">
+                          <FilePenLineIcon data-icon="inline-start" />
+                          {item.lifecycleStatus === "Archived" ? "Edit and republish" : "Edit Published Destination"}
                         </Button>
+                        {item.lifecycleStatus === "Published" && (
+                          <Button type="submit" variant="destructive" name="intent" value="archive">
+                            <ArchiveIcon data-icon="inline-start" />
+                            Archive
+                          </Button>
+                        )}
                       </Form>
                     )}
                   </CardFooter>

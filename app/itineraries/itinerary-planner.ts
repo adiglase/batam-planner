@@ -523,7 +523,7 @@ async function solve(
 export async function buildItinerary(
   trip: Trip,
   routingProvider: RoutingProvider,
-  publishedDestinations: readonly Pick<Destination, "id" | "operationalStatus">[] = trip.destinations,
+  publishedDestinations?: readonly Pick<Destination, "id" | "operationalStatus">[],
 ): Promise<BuildItineraryResult> {
   const missing: BuildAction[] = [];
   if (trip.destinations.length === 0) {
@@ -612,7 +612,18 @@ export async function buildItinerary(
     };
   }
 
-  const publishedStatuses = new Map(publishedDestinations.map(({ id, operationalStatus }) => [id, operationalStatus]));
+  const eligibilitySource =
+    publishedDestinations ??
+    [
+      ...trip.destinations,
+      ...(trip.accommodation ? [trip.accommodation] : []),
+    ];
+  const publishedStatuses = new Map(
+    eligibilitySource.map(({ id, operationalStatus }) => [
+      id,
+      operationalStatus,
+    ]),
+  );
   const blocked = trip.destinations.find(({ id }) => publishedStatuses.get(id) !== "Open");
   if (blocked) return {
     ok: false,
@@ -620,6 +631,19 @@ export async function buildItinerary(
     message: `${blocked.name} is not currently eligible for a Visit.`,
     suggestions: [{ label: `Remove ${blocked.name}`, targetId: `remove-destination-${blocked.id}` }],
   };
+  if (
+    trip.accommodation &&
+    publishedStatuses.get(trip.accommodation.id) !== "Open"
+  ) {
+    return {
+      ok: false,
+      code: "ineligible-destination",
+      message: `${trip.accommodation.name} is not currently eligible as the Accommodation.`,
+      suggestions: [
+        { label: `Clear ${trip.accommodation.name}`, targetId: "accommodation" },
+      ],
+    };
+  }
 
   const destinations = trip.destinationOrder
     ? trip.destinationOrder.map((id) => trip.destinations.find((destination) => destination.id === id)!)
@@ -628,7 +652,12 @@ export async function buildItinerary(
 
   const arrivalAnchor = terminalAnchor(arrivalTerminal!.name, arrivalTerminal!.coordinates);
   const departureAnchor = terminalAnchor(departureTerminal!.name, departureTerminal!.coordinates);
-  const accommodationAnchor = trip.accommodation ? destinationAnchor({ ...trip.accommodation, typicalVisitMinutes: undefined, operationalStatus: "Open" }) : null;
+  const accommodationAnchor = trip.accommodation
+    ? destinationAnchor({
+        ...trip.accommodation,
+        typicalVisitMinutes: undefined,
+      })
+    : null;
   const multiDay = dates.length > 1;
   const bounds: DayBounds[] = dates.map((date, index) => {
     const [windowStart, windowEnd] = parsedWindows[index] as readonly [number, number];

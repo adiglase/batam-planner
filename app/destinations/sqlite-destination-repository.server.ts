@@ -223,6 +223,7 @@ export class SqliteDestinationRepository implements DestinationRepository {
       byDestination.set(row.id, {
         destinationId: row.id,
         published: destinationFromRow(row),
+        lifecycleStatus: row.lifecycle_status,
       });
     }
     for (const row of draftRows) {
@@ -230,7 +231,7 @@ export class SqliteDestinationRepository implements DestinationRepository {
       byDestination.set(row.destination_id, {
         destinationId: row.destination_id,
         ...current,
-        draft: draftFromRow(row, Boolean(current?.published)),
+        draft: draftFromRow(row, current?.lifecycleStatus === "Published"),
       });
     }
 
@@ -254,10 +255,12 @@ export class SqliteDestinationRepository implements DestinationRepository {
       .prepare("SELECT * FROM destination_drafts WHERE id = ?")
       .get(id) as DraftRow | undefined;
     if (!row) return undefined;
-    const published = this.database
-      .prepare("SELECT 1 FROM destinations WHERE id = ?")
-      .get(row.destination_id);
-    return draftFromRow(row, Boolean(published));
+    const destination = this.database
+      .prepare("SELECT lifecycle_status FROM destinations WHERE id = ?")
+      .get(row.destination_id) as
+      | { lifecycle_status: DestinationRow["lifecycle_status"] }
+      | undefined;
+    return draftFromRow(row, destination?.lifecycle_status === "Published");
   }
 
   saveDraft(id: string, candidate: DestinationCandidate): DraftDestination {
@@ -407,6 +410,19 @@ export class SqliteDestinationRepository implements DestinationRepository {
     })();
 
     return { ok: true, destinationId: draft.destinationId };
+  }
+
+  archiveDestination(destinationId: string): void {
+    const result = this.database
+      .prepare(
+        `UPDATE destinations
+         SET lifecycle_status = 'Archived'
+         WHERE id = ? AND lifecycle_status = 'Published'`,
+      )
+      .run(destinationId);
+    if (result.changes === 0) {
+      throw new Error("Published Destination not found");
+    }
   }
 
   private createSchema(seed: boolean) {

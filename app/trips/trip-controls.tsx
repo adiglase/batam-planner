@@ -6,7 +6,9 @@ import {
   CheckIcon,
   PlusIcon,
   ShipIcon,
+  TriangleAlertIcon,
 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import {
   Empty,
   EmptyHeader,
@@ -195,6 +197,21 @@ export function TripSurface({
         <h1>{trip.name || "Untitled Trip"}</h1>
         <Badge variant="secondary">{tripStatus(trip)}</Badge>
       </header>
+      {trip.destinationNotices.length > 0 && (
+        <Alert variant="destructive">
+          <TriangleAlertIcon aria-hidden="true" />
+          <AlertTitle>Destination changes need your attention</AlertTitle>
+          <AlertDescription>
+            <ul className="list-disc pl-5">
+              {trip.destinationNotices.map((notice) => (
+                <li key={notice.destinationId}>
+                  {notice.destinationName}: {notice.reason}.
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
       {trips.editing && (
         <FieldGroup>
           <Field>
@@ -351,7 +368,7 @@ export function TripSurface({
           )}
         </CardContent>
       </Card>
-      <Card>
+      <Card id="accommodation" tabIndex={-1}>
         <CardHeader>
           <CardTitle>Accommodation</CardTitle>
           <CardDescription>

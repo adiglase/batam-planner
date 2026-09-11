@@ -5,12 +5,18 @@ import type { TransportMode } from "~/routing/routing-provider";
 export type SelectedDestination = Pick<
   Destination,
   "id" | "name" | "coordinates" | "typicalVisitMinutes" | "operationalStatus"
->;
+> & { availability: "Published" | "Archived" };
 
 export type AccommodationRef = Pick<
   Destination,
-  "id" | "name" | "coordinates"
->;
+  "id" | "name" | "coordinates" | "operationalStatus"
+> & { availability: "Published" | "Archived" };
+
+export type DestinationNotice = {
+  destinationId: string;
+  destinationName: string;
+  reason: "Planning facts changed" | "Temporarily closed" | "Archived";
+};
 
 export type PrimaryTransportMode = TransportMode;
 export type ShortWalkMinutes = 0 | 5 | 10 | 15;
@@ -50,6 +56,7 @@ export type Trip = {
   destinationOrder: string[] | null;
   revision: number;
   itinerary: Itinerary | null;
+  destinationNotices: DestinationNotice[];
 };
 export type TripCollection = { trips: Trip[]; activeTripId: string | null };
 export const TRIPS_KEY = "batam-planner:trips:v1";
@@ -71,7 +78,7 @@ export function storeBuiltItinerary(
 ): Trip {
   // A Build result is stale if inputs changed while routing was in flight.
   if (itinerary.inputRevision !== trip.revision) return trip;
-  return { ...trip, itinerary };
+  return { ...trip, itinerary, destinationNotices: [] };
 }
 
 export function createTrip(id: string): Trip {
@@ -92,6 +99,7 @@ export function createTrip(id: string): Trip {
     destinationOrder: null,
     revision: 0,
     itinerary: null,
+    destinationNotices: [],
   };
 }
 /**
@@ -131,7 +139,7 @@ export function setAccommodation(
   if (!editing) return trip;
   if (!canSetAsAccommodation(destination)) return trip;
   if (isAccommodation(trip, destination.id)) return trip;
-  const { id, name, coordinates } = destination;
+  const { id, name, coordinates, operationalStatus } = destination;
   const visitDurationOverrides = { ...trip.visitDurationOverrides };
   delete visitDurationOverrides[id];
   return {
@@ -142,13 +150,31 @@ export function setAccommodation(
     destinations: trip.destinations.filter((item) => item.id !== id),
     destinationOrder: trip.destinationOrder?.filter((item) => item !== id) ?? null,
     visitDurationOverrides,
-    accommodation: { id, name, coordinates },
+    accommodation: {
+      id,
+      name,
+      coordinates,
+      operationalStatus,
+      availability: "Published",
+    },
+    destinationNotices: trip.destinationNotices.filter(
+      (notice) =>
+        notice.destinationId !== id &&
+        notice.destinationId !== trip.accommodation?.id,
+    ),
   };
 }
 export function clearAccommodation(trip: Trip, editing: boolean): Trip {
   if (!editing) return trip;
   if (!trip.accommodation) return trip;
-  return { ...trip, revision: trip.revision + 1, accommodation: null };
+  return {
+    ...trip,
+    revision: trip.revision + 1,
+    accommodation: null,
+    destinationNotices: trip.destinationNotices.filter(
+      (notice) => notice.destinationId !== trip.accommodation!.id,
+    ),
+  };
 }
 export function setTransportMode(
   trip: Trip,
@@ -289,7 +315,14 @@ export function toggleDestination(
     ? trip.destinations.filter((item) => item.id !== id)
     : [
         ...trip.destinations,
-        { id, name, coordinates, typicalVisitMinutes, operationalStatus },
+        {
+          id,
+          name,
+          coordinates,
+          typicalVisitMinutes,
+          operationalStatus,
+          availability: "Published" as const,
+        },
       ];
   const visitDurationOverrides = { ...trip.visitDurationOverrides };
   if (selected) delete visitDurationOverrides[id];
@@ -304,6 +337,9 @@ export function toggleDestination(
         : selected
           ? trip.destinationOrder.filter((item) => item !== id)
           : [...trip.destinationOrder, id],
+    destinationNotices: selected
+      ? trip.destinationNotices.filter((notice) => notice.destinationId !== id)
+      : trip.destinationNotices,
   };
 }
 
@@ -320,7 +356,128 @@ export function removeSelectedDestination(trip: Trip, id: string): Trip {
     ),
     visitDurationOverrides,
     destinationOrder: trip.destinationOrder?.filter((item) => item !== id) ?? null,
+    destinationNotices: trip.destinationNotices.filter(
+      (notice) => notice.destinationId !== id,
+    ),
   };
+}
+
+function sameCoordinates(
+  left: { latitude: number; longitude: number },
+  right: { latitude: number; longitude: number },
+) {
+  return left.latitude === right.latitude && left.longitude === right.longitude;
+}
+
+/**
+ * Refreshes only planning-relevant Destination snapshots in browser-local
+ * Trips. Visitor-content edits are deliberately absent from these snapshots,
+ * so they cannot make an Itinerary stale.
+ */
+export function reconcileDestinationFacts(
+  collection: TripCollection,
+  publishedDestinations: readonly Destination[],
+): TripCollection {
+  const published = new Map(publishedDestinations.map((item) => [item.id, item]));
+  let collectionChanged = false;
+  const trips = collection.trips.map((trip) => {
+    let planningChanged = false;
+    let tripChanged = false;
+    const nextNotices = new Map(
+      (trip.destinationNotices ?? []).map((notice) => [notice.destinationId, notice]),
+    );
+    const destinations = trip.destinations.map((saved) => {
+      const current = published.get(saved.id);
+      if (!current) {
+        if (saved.availability !== "Archived") planningChanged = true;
+        if (saved.availability !== "Archived") tripChanged = true;
+        nextNotices.set(saved.id, {
+          destinationId: saved.id,
+          destinationName: saved.name,
+          reason: "Archived",
+        });
+        return { ...saved, availability: "Archived" as const };
+      }
+      const changed =
+        saved.availability !== "Published" ||
+        !sameCoordinates(saved.coordinates, current.coordinates) ||
+        saved.typicalVisitMinutes !== current.typicalVisitMinutes ||
+        saved.operationalStatus !== current.operationalStatus;
+      if (!changed && saved.name === current.name) return saved;
+      tripChanged = true;
+      if (!changed) return { ...saved, name: current.name };
+      planningChanged = true;
+      nextNotices.set(saved.id, {
+        destinationId: saved.id,
+        destinationName: current.name,
+        reason:
+          current.operationalStatus === "Temporarily closed"
+            ? "Temporarily closed"
+            : "Planning facts changed",
+      });
+      return {
+        id: current.id,
+        name: current.name,
+        coordinates: current.coordinates,
+        typicalVisitMinutes: current.typicalVisitMinutes,
+        operationalStatus: current.operationalStatus,
+        availability: "Published" as const,
+      };
+    });
+
+    let accommodation = trip.accommodation;
+    if (accommodation) {
+      const current = published.get(accommodation.id);
+      if (!current) {
+        if (accommodation.availability !== "Archived") planningChanged = true;
+        if (accommodation.availability !== "Archived") tripChanged = true;
+        nextNotices.set(accommodation.id, {
+          destinationId: accommodation.id,
+          destinationName: accommodation.name,
+          reason: "Archived",
+        });
+        accommodation = { ...accommodation, availability: "Archived" };
+      } else {
+        const changed =
+          accommodation.availability !== "Published" ||
+          !sameCoordinates(accommodation.coordinates, current.coordinates) ||
+          accommodation.operationalStatus !== current.operationalStatus;
+        if (changed || accommodation.name !== current.name) {
+          tripChanged = true;
+          if (!changed) {
+            accommodation = { ...accommodation, name: current.name };
+          } else {
+          planningChanged = true;
+          nextNotices.set(accommodation.id, {
+            destinationId: accommodation.id,
+            destinationName: current.name,
+            reason:
+              current.operationalStatus === "Temporarily closed"
+                ? "Temporarily closed"
+                : "Planning facts changed",
+          });
+          accommodation = {
+            id: current.id,
+            name: current.name,
+            coordinates: current.coordinates,
+            operationalStatus: current.operationalStatus,
+            availability: "Published",
+          };
+          }
+        }
+      }
+    }
+    if (!tripChanged) return trip;
+    collectionChanged = true;
+    return {
+      ...trip,
+      destinations,
+      accommodation,
+      revision: trip.revision + (planningChanged ? 1 : 0),
+      destinationNotices: [...nextNotices.values()],
+    };
+  });
+  return collectionChanged ? { ...collection, trips } : collection;
 }
 
 function isAccommodationRef(value: unknown): value is AccommodationRef {
@@ -332,7 +489,23 @@ function isAccommodationRef(value: unknown): value is AccommodationRef {
     typeof accommodation.name === "string" &&
     !!accommodation.coordinates &&
     Number.isFinite(accommodation.coordinates.latitude) &&
-    Number.isFinite(accommodation.coordinates.longitude)
+    Number.isFinite(accommodation.coordinates.longitude) &&
+    (accommodation.operationalStatus === undefined ||
+      ["Open", "Temporarily closed"].includes(accommodation.operationalStatus)) &&
+    (accommodation.availability === undefined ||
+      ["Published", "Archived"].includes(accommodation.availability))
+  );
+}
+
+function isDestinationNotice(value: unknown): value is DestinationNotice {
+  if (!value || typeof value !== "object") return false;
+  const notice = value as DestinationNotice;
+  return (
+    typeof notice.destinationId === "string" &&
+    typeof notice.destinationName === "string" &&
+    ["Planning facts changed", "Temporarily closed", "Archived"].includes(
+      notice.reason,
+    )
   );
 }
 
@@ -516,6 +689,9 @@ function isTrip(value: unknown): value is Trip {
           t.destinations.some((destination) => destination.id === id),
         ))) &&
     (t.itinerary === null || isItinerary(t.itinerary) || isLegacySameDayItinerary(t.itinerary)) &&
+    (t.destinationNotices === undefined ||
+      (Array.isArray(t.destinationNotices) &&
+        t.destinationNotices.every(isDestinationNotice))) &&
     Array.isArray(t.destinations) &&
     t.destinations.every(
       (d) =>
@@ -527,7 +703,9 @@ function isTrip(value: unknown): value is Trip {
         Number.isFinite(d.coordinates.longitude) &&
         (d.typicalVisitMinutes === undefined ||
           Number.isFinite(d.typicalVisitMinutes)) &&
-        ["Open", "Temporarily closed"].includes(d.operationalStatus),
+        ["Open", "Temporarily closed"].includes(d.operationalStatus) &&
+        (d.availability === undefined ||
+          ["Published", "Archived"].includes(d.availability)),
     ) &&
     new Set(t.destinations.map((d) => d.id)).size === t.destinations.length &&
     // The Accommodation is never also a selected Visit.
@@ -586,7 +764,21 @@ export class TripRepository {
               visitDurationOverrides: trip.visitDurationOverrides ?? {},
               destinationOrder: trip.destinationOrder ?? null,
               itinerary: normalizeItinerary(trip.itinerary),
+              destinationNotices: trip.destinationNotices ?? [],
             };
+            normalized.destinations = normalized.destinations.map((destination) => ({
+              ...destination,
+              availability: destination.availability ?? "Published",
+            }));
+            if (normalized.accommodation) {
+              normalized.accommodation = {
+                ...normalized.accommodation,
+                operationalStatus:
+                  normalized.accommodation.operationalStatus ?? "Open",
+                availability:
+                  normalized.accommodation.availability ?? "Published",
+              };
+            }
             return normalized.dailyWindows.length > 0
               ? normalized
               : { ...normalized, dailyWindows: windowsForBoundaries(normalized) };

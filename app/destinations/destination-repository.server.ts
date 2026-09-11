@@ -15,6 +15,7 @@ export type OwnerDestination = {
   destinationId: string;
   published?: Destination;
   draft?: DraftDestination;
+  lifecycleStatus?: "Published" | "Archived";
 };
 
 export interface DestinationRepository {
@@ -26,4 +27,5 @@ export interface DestinationRepository {
   previewDraft(id: string): DestinationPreview;
   startReplacementDraft(destinationId: string): DraftDestination;
   publishDraft(id: string): PublishResult;
+  archiveDestination(destinationId: string): void;
 }

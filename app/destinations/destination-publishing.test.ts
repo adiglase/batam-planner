@@ -195,6 +195,48 @@ describe("Destination publishing", () => {
     );
   });
 
+  it("Archives a Destination from discovery while retaining it for republishing", () => {
+    const draft = repository.createDraft();
+    repository.saveDraft(draft.id, publishableCandidate);
+    repository.publishDraft(draft.id);
+
+    repository.archiveDestination(draft.destinationId);
+
+    expect(repository.listPublished()).toEqual([]);
+    expect(repository.listForOwner()).toEqual([
+      expect.objectContaining({
+        destinationId: draft.destinationId,
+        lifecycleStatus: "Archived",
+        published: expect.objectContaining({ name: "Nongsa Coast" }),
+      }),
+    ]);
+
+    const replacement = repository.startReplacementDraft(draft.destinationId);
+    expect(replacement.replacesPublished).toBe(false);
+    expect(repository.publishDraft(replacement.id)).toEqual({
+      ok: true,
+      destinationId: draft.destinationId,
+    });
+    expect(repository.listPublished()[0]?.name).toBe("Nongsa Coast");
+  });
+
+  it("keeps a temporarily closed Destination Published and discoverable", () => {
+    const draft = repository.createDraft();
+    repository.saveDraft(draft.id, {
+      ...publishableCandidate,
+      operationalStatus: "Temporarily closed",
+    });
+
+    expect(repository.publishDraft(draft.id)).toEqual({
+      ok: true,
+      destinationId: draft.destinationId,
+    });
+    expect(repository.listPublished()[0]).toMatchObject({
+      id: draft.destinationId,
+      operationalStatus: "Temporarily closed",
+    });
+  });
+
   it("previews Visitor facts while omitting absent media and private rights", () => {
     const draft = repository.createDraft();
     repository.saveDraft(draft.id, {

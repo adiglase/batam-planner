@@ -7,6 +7,7 @@ import {
   effectiveVisitMinutes,
   moveDestination,
   optimizeDestinationOrder,
+  reconcileDestinationFacts,
   reopeningSurface,
   removeSelectedDestination,
   setAccommodation,
@@ -333,6 +334,8 @@ describe("Accommodation and Primary transport", () => {
       id: accommodation.id,
       name: accommodation.name,
       coordinates: accommodation.coordinates,
+      operationalStatus: "Open",
+      availability: "Published",
     });
     expect(trip.revision).toBe(1);
   });
@@ -474,5 +477,96 @@ describe("Accommodation and Primary transport", () => {
     );
     const repository = new TripRepository(() => storage);
     expect(repository.load().failed).toBe(true);
+  });
+});
+
+describe("Destination lifecycle reconciliation", () => {
+  function readyTrip() {
+    const selected = toggleDestination(createTrip("trip"), destination, true);
+    return { ...selected, itinerary: itinerary(selected.revision) };
+  }
+
+  it("marks a ready Itinerary Needs rebuilding and names planning fact changes", () => {
+    const trip = readyTrip();
+    const changedDestination = {
+      ...destination,
+      coordinates: { latitude: 1.01, longitude: 104.02 },
+      typicalVisitMinutes: 75,
+    };
+    const reconciled = reconcileDestinationFacts(
+      { trips: [trip], activeTripId: trip.id },
+      [changedDestination],
+    );
+    const changed = reconciled.trips[0];
+
+    expect(tripStatus(changed)).toBe("Needs rebuilding");
+    expect(changed.destinations[0]).toMatchObject({
+      coordinates: changedDestination.coordinates,
+      typicalVisitMinutes: 75,
+    });
+    expect(changed.destinationNotices).toEqual([
+      {
+        destinationId: destination.id,
+        destinationName: destination.name,
+        reason: "Planning facts changed",
+      },
+    ]);
+    expect(reconcileDestinationFacts(reconciled, [changedDestination])).toBe(
+      reconciled,
+    );
+  });
+
+  it("keeps an Archived Destination recognizable and flags it once", () => {
+    const trip = readyTrip();
+    const reconciled = reconcileDestinationFacts(
+      { trips: [trip], activeTripId: trip.id },
+      [],
+    );
+    const changed = reconciled.trips[0];
+
+    expect(changed.destinations[0]).toMatchObject({
+      id: destination.id,
+      name: destination.name,
+      availability: "Archived",
+    });
+    expect(changed.destinationNotices[0]).toMatchObject({
+      destinationName: destination.name,
+      reason: "Archived",
+    });
+    expect(tripStatus(changed)).toBe("Needs rebuilding");
+    expect(reconcileDestinationFacts(reconciled, [])).toBe(reconciled);
+  });
+
+  it("names a Destination that becomes temporarily closed", () => {
+    const trip = readyTrip();
+    const closed = {
+      ...destination,
+      operationalStatus: "Temporarily closed" as const,
+    };
+    const reconciled = reconcileDestinationFacts(
+      { trips: [trip], activeTripId: trip.id },
+      [closed],
+    ).trips[0];
+
+    expect(reconciled.destinations[0].operationalStatus).toBe(
+      "Temporarily closed",
+    );
+    expect(reconciled.destinationNotices).toEqual([
+      expect.objectContaining({
+        destinationName: destination.name,
+        reason: "Temporarily closed",
+      }),
+    ]);
+    expect(tripStatus(reconciled)).toBe("Needs rebuilding");
+  });
+
+  it("does not make an Itinerary stale when only Visitor content changes", () => {
+    const trip = readyTrip();
+    const reconciled = reconcileDestinationFacts(
+      { trips: [trip], activeTripId: trip.id },
+      [{ ...destination, description: "Updated public description only." }],
+    );
+    expect(reconciled.trips[0]).toBe(trip);
+    expect(tripStatus(reconciled.trips[0])).toBe("Itinerary ready");
   });
 });

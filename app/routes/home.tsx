@@ -124,7 +124,7 @@ type RestoreSnapshot = {
 
 export default function Home({ loaderData }: Route.ComponentProps) {
   const { destinations } = loaderData;
-  const trips = useTrips();
+  const trips = useTrips(destinations);
   const [tripListOpen, setTripListOpen] = useState(false);
   const [activeSurface, setActiveSurface] = useState<Surface>("discover");
   const [pendingTripInput, setPendingTripInput] = useState<string | null>(null);

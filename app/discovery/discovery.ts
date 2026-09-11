@@ -242,6 +242,22 @@ export function groupSharedCoordinates(
     .sort((left, right) => left.id.localeCompare(right.id));
 }
 
+/**
+ * Route presentation shows every marker in Visit order instead of
+ * clustering: numbered Visits must stay individually visible.
+ */
+export function singleMarkerClusters(
+  markers: ClusterInput[],
+): DestinationCluster[] {
+  return markers.map((marker) => ({
+    id: marker.id,
+    coordinates: marker.coordinates,
+    memberIds: [marker.id],
+    count: 1,
+    sharedCoordinates: false,
+  }));
+}
+
 export function clusterMarkers(
   markers: ClusterInput[],
   zoom: number,

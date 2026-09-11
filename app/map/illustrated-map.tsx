@@ -4,6 +4,7 @@ import {
   CLUSTER_MAX_ZOOM,
   clusterMarkers,
   isClusterActive,
+  singleMarkerClusters,
   viewportBoundsFromCenterZoom,
 } from "~/discovery/discovery";
 import type { DestinationCluster } from "~/discovery/discovery";
@@ -50,17 +51,23 @@ function boundsEqual(left: MapBounds | null, right: MapBounds): boolean {
 
 export function IllustratedMap({
   markers,
-  focusedDestinationId,
+  focusedElementId,
+  route,
   viewport,
   visibleBounds,
   onViewportChange,
   onOpenDestination,
-  onFocusDestination,
+  onFocusElement,
 }: MapPresentation) {
   const [chooser, setChooser] = useState<DestinationCluster | null>(null);
+  // A selected-day route is presented in Visit order: clustering would hide
+  // numbered Visits, so route markers stay individually visible.
   const clusters = useMemo(
-    () => clusterMarkers(markers, viewport.zoom),
-    [markers, viewport.zoom],
+    () =>
+      route
+        ? singleMarkerClusters(markers)
+        : clusterMarkers(markers, viewport.zoom),
+    [markers, viewport.zoom, route],
   );
   const markerById = useMemo(
     () => new Map(markers.map((marker) => [marker.id, marker])),
@@ -168,29 +175,69 @@ export function IllustratedMap({
       <span className="map-place-label map-place-label-main">Batam</span>
       <span className="map-place-label map-place-label-south">Barelang</span>
 
+      {route && route.legs.length > 0 && (
+        <svg
+          className="map-route"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+        >
+          {route.legs.map((leg) => (
+            <polyline
+              key={leg.id}
+              className="map-route-leg"
+              data-focused={leg.id === focusedElementId || undefined}
+              points={leg.path
+                .map((point) => {
+                  const position = projectToPercent(point);
+                  return `${position.left},${position.top}`;
+                })
+                .join(" ")}
+              role="button"
+              tabIndex={0}
+              focusable="true"
+              aria-label={leg.label}
+              onClick={() => onFocusElement?.(leg.id)}
+              onFocus={() => onFocusElement?.(leg.id)}
+              onMouseEnter={() => onFocusElement?.(leg.id)}
+            />
+          ))}
+        </svg>
+      )}
+
       {clusters.map((cluster) => {
         const position = projectToPercent(cluster.coordinates);
         if (cluster.count === 1) {
           const marker = markerById.get(cluster.memberIds[0]);
           if (!marker) return null;
-          const selected = marker.id === focusedDestinationId;
+          const selected = marker.id === focusedElementId;
           return (
             <button
               key={marker.id}
               type="button"
               className="map-marker"
+              data-kind={marker.kind}
               style={{ left: `${position.left}%`, top: `${position.top}%` }}
               aria-pressed={selected}
-              aria-label={`View details for ${marker.label}`}
-              onClick={() => onOpenDestination(marker.id)}
-              onMouseEnter={() => onFocusDestination?.(marker.id)}
-              onFocus={() => onFocusDestination?.(marker.id)}
+              aria-label={
+                onOpenDestination
+                  ? `View details for ${marker.label}`
+                  : marker.sequence
+                    ? `Visit ${marker.sequence}: ${marker.label}`
+                    : marker.label
+              }
+              onClick={() =>
+                onOpenDestination
+                  ? onOpenDestination(marker.id)
+                  : onFocusElement?.(marker.id)
+              }
+              onMouseEnter={() => onFocusElement?.(marker.id)}
+              onFocus={() => onFocusElement?.(marker.id)}
             >
-              <span aria-hidden="true">•</span>
+              <span aria-hidden="true">{marker.sequence ?? "•"}</span>
             </button>
           );
         }
-        const containsFocus = isClusterActive(cluster, focusedDestinationId);
+        const containsFocus = isClusterActive(cluster, focusedElementId);
         return (
           <button
             key={cluster.id}
@@ -238,7 +285,7 @@ export function IllustratedMap({
                   <button
                     type="button"
                     onClick={() => {
-                      onOpenDestination(memberId);
+                      onOpenDestination?.(memberId);
                       setChooser(null);
                     }}
                   >
@@ -256,13 +303,16 @@ export function IllustratedMap({
 
       <div className="map-caption" aria-live="polite">
         <strong>
-          {markers.find(({ id }) => id === focusedDestinationId)?.label ??
-            "Explore Batam"}
+          {markers.find(({ id }) => id === focusedElementId)?.label ??
+            route?.legs.find(({ id }) => id === focusedElementId)?.label ??
+            (route ? "Selected day route" : "Explore Batam")}
         </strong>
         <span>
-          {viewport.zoom >= CLUSTER_MAX_ZOOM
-            ? "Focused Destination"
-            : "Focused Destination · zoom in to separate clusters"}
+          {route
+            ? `${route.legs.length} Travel ${route.legs.length === 1 ? "leg" : "legs"} · Traffic-unaware`
+            : viewport.zoom >= CLUSTER_MAX_ZOOM
+              ? "Focused Destination"
+              : "Focused Destination · zoom in to separate clusters"}
         </span>
       </div>
     </div>

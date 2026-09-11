@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Destination } from "~/destinations/destination";
 import type { RoutingProvider } from "~/routing/routing-provider";
+import { RoutingFailure } from "~/routing/routing-provider";
 import {
   createTrip,
   optimizeDestinationOrder,
@@ -369,6 +370,29 @@ describe("one-day Itinerary Build", () => {
         code: "unavailable-route",
       });
       expect(provider.estimateTravel.mock.calls.every(([input]) => input.mode === mode)).toBe(true);
+    },
+  );
+
+  it.each([
+    ["connection-required", "connection-required"],
+    ["quota-exceeded", "routing-quota"],
+    ["provider-unavailable", "routing-provider-unavailable"],
+  ] as const)(
+    "translates %s without changing the Trip or its current Itinerary",
+    async (failure, expectedCode) => {
+      const trip = completeTrip();
+      const snapshot = structuredClone(trip);
+      const provider: RoutingProvider = {
+        estimateTravel: async () => {
+          throw new RoutingFailure(failure);
+        },
+      };
+
+      await expect(buildSameDayItinerary(trip, provider)).resolves.toMatchObject({
+        ok: false,
+        code: expectedCode,
+      });
+      expect(trip).toEqual(snapshot);
     },
   );
 

@@ -79,6 +79,8 @@ export function ItinerarySurface({
   onSelectDay,
   focusedElementId,
   onFocusElement,
+  connected = true,
+  onRetryConnection,
 }: {
   trips: TripControls;
   routingProvider: RoutingProvider;
@@ -88,6 +90,8 @@ export function ItinerarySurface({
   onSelectDay: (index: number) => void;
   focusedElementId: string | null;
   onFocusElement: (elementId: string | null) => void;
+  connected?: boolean;
+  onRetryConnection?: () => Promise<boolean>;
 }) {
   const [building, setBuilding] = useState(false);
   const [failure, setFailure] = useState<BuildFailure | string | null>(null);
@@ -124,6 +128,15 @@ export function ItinerarySurface({
 
   async function build() {
     if (!trip || building) return;
+    if (!connected) {
+      setFailure({
+        ok: false,
+        code: "connection-required",
+        message: "A connection is required to calculate Travel. Your saved Trip and current Itinerary have not been changed.",
+        suggestions: [],
+      });
+      return;
+    }
     setBuilding(true);
     setFailure(null);
     const result = await buildItinerary(
@@ -147,7 +160,13 @@ export function ItinerarySurface({
     return (
       <div className="flex flex-col gap-4">
         {failure && (
-          <BuildFailureAlert failure={failure} onReviewTrip={onReviewTrip} />
+          <BuildFailureAlert
+            failure={failure}
+            onReviewTrip={onReviewTrip}
+            onRetryConnection={async () => {
+              if (await onRetryConnection?.()) setFailure(null);
+            }}
+          />
         )}
         <Empty className="border bg-card">
           <EmptyHeader>
@@ -216,7 +235,13 @@ export function ItinerarySurface({
         </Alert>
       )}
       {failure && (
-        <BuildFailureAlert failure={failure} onReviewTrip={onReviewTrip} />
+        <BuildFailureAlert
+          failure={failure}
+          onReviewTrip={onReviewTrip}
+          onRetryConnection={async () => {
+            if (await onRetryConnection?.()) setFailure(null);
+          }}
+        />
       )}
       {itinerary.warnings.map((warning) => (
         <Alert key={warning.code}>
@@ -553,9 +578,11 @@ function OnTripPanel({
 function BuildFailureAlert({
   failure,
   onReviewTrip,
+  onRetryConnection,
 }: {
   failure: BuildFailure | string;
   onReviewTrip: (targetId?: string) => void;
+  onRetryConnection?: () => Promise<void>;
 }) {
   if (typeof failure === "string") {
     return (
@@ -573,10 +600,26 @@ function BuildFailureAlert({
       <AlertTitle>
         {failure.code === "missing-input"
           ? "Complete your Trip before building"
+          : failure.code === "connection-required"
+            ? "Connection required"
+            : failure.code === "routing-quota"
+              ? "Travel calculations are at capacity"
+              : failure.code === "routing-provider-unavailable"
+                ? "Travel calculations unavailable"
           : "No complete Itinerary fits"}
       </AlertTitle>
       <AlertDescription className="flex flex-col gap-3">
         <p>{failure.message}</p>
+        {failure.code === "connection-required" && onRetryConnection && (
+          <Button
+            className="self-start"
+            variant="outline"
+            size="sm"
+            onClick={() => void onRetryConnection()}
+          >
+            Retry
+          </Button>
+        )}
         {failure.requirements && failure.requirements.length > 0 && (
           <ul className="flex flex-col gap-1" aria-label="Required Trip inputs">
             {failure.requirements.map((requirement) => (

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createBrowserRoutingProvider } from "./browser-routing-provider";
 import { createGoogleRoutesProvider } from "./google-routes-provider.server";
+import { RoutingFailure } from "./routing-provider";
 
 const input = {
   origin: { latitude: 1.13, longitude: 104.01 },
@@ -156,7 +157,7 @@ describe("browser routing provider", () => {
     );
   });
 
-  it("rejects malformed or mismatched responses as unavailable", async () => {
+  it("translates malformed or mismatched responses into provider unavailability", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({
         estimate: {
@@ -169,6 +170,25 @@ describe("browser routing provider", () => {
     );
     await expect(
       createBrowserRoutingProvider(fetcher).estimateTravel(input),
-    ).resolves.toBeNull();
+    ).rejects.toMatchObject({ code: "provider-unavailable" });
+  });
+
+  it.each([
+    ["quota-exceeded", 429],
+    ["provider-unavailable", 503],
+  ] as const)("preserves the product-facing %s failure", async (failure, status) => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({ estimate: null, failure }, { status }),
+    );
+    await expect(
+      createBrowserRoutingProvider(fetcher).estimateTravel(input),
+    ).rejects.toMatchObject({ code: failure });
+  });
+
+  it("translates a failed browser request into a connection-required state", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new TypeError("provider details"));
+    await expect(
+      createBrowserRoutingProvider(fetcher).estimateTravel(input),
+    ).rejects.toEqual(new RoutingFailure("connection-required"));
   });
 });

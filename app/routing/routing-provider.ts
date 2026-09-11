@@ -16,6 +16,23 @@ export type TravelEstimate = {
   warnings: TravelWarning[];
 };
 
+export type RoutingFailureCode =
+  | "connection-required"
+  | "quota-exceeded"
+  | "provider-unavailable";
+
+/** A provider-neutral failure that is safe to translate in Visitor-facing UI. */
+export class RoutingFailure extends Error {
+  constructor(public readonly code: RoutingFailureCode) {
+    super(code);
+    this.name = "RoutingFailure";
+  }
+}
+
+export function isRoutingFailure(value: unknown): value is RoutingFailure {
+  return value instanceof RoutingFailure;
+}
+
 export interface RoutingProvider {
   estimateTravel(input: {
     origin: Coordinates;

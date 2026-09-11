@@ -1,6 +1,7 @@
 import type { Route } from "./+types/travel-estimate-api";
 import type { Coordinates } from "~/geography/coordinates";
 import { createGoogleRoutesProvider } from "~/routing/google-routes-provider.server";
+import { isRoutingFailure } from "~/routing/routing-provider";
 import { isPrimaryTransportMode } from "~/trips/trip-repository";
 
 function isCoordinates(value: unknown): value is Coordinates {
@@ -43,17 +44,30 @@ export async function action({ request }: Route.ActionArgs) {
   const apiKey = process.env.GOOGLE_ROUTES_API_KEY;
   if (!apiKey) {
     return Response.json(
-      { estimate: null },
+      { estimate: null, failure: "provider-unavailable" },
       { status: 503, headers: { "Cache-Control": "no-store" } },
     );
   }
-  const estimate = await createGoogleRoutesProvider(apiKey).estimateTravel({
-    origin: candidate.origin,
-    destination: candidate.destination,
-    mode: candidate.mode,
-  });
-  return Response.json(
-    { estimate },
-    { headers: { "Cache-Control": "no-store" } },
-  );
+  try {
+    const estimate = await createGoogleRoutesProvider(apiKey).estimateTravel({
+      origin: candidate.origin,
+      destination: candidate.destination,
+      mode: candidate.mode,
+    });
+    return Response.json(
+      { estimate },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (error) {
+    const failure = isRoutingFailure(error)
+      ? error.code
+      : "provider-unavailable";
+    return Response.json(
+      { estimate: null, failure },
+      {
+        status: failure === "quota-exceeded" ? 429 : 503,
+        headers: { "Cache-Control": "no-store" },
+      },
+    );
+  }
 }

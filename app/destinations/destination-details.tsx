@@ -313,11 +313,19 @@ function TravelFromAccommodation({
             )}
             {travelStatus.state === "unavailable" && (
               <>
-                <p aria-live="polite">Travel unavailable</p>
+                <p aria-live="polite">
+                  {travelStatus.reason === "connection-required"
+                    ? "Connection required"
+                    : travelStatus.reason === "quota-exceeded"
+                      ? "Travel calculations are temporarily at capacity"
+                      : travelStatus.reason === "provider-unavailable"
+                        ? "Travel calculations are temporarily unavailable"
+                        : "Travel unavailable"}
+                </p>
                 <p className="destination-fact-note">
-                  We could not calculate Travel from {accommodationName}.
-                  Distances and durations are shown only from measured road
-                  estimates.
+                  {travelStatus.reason === "connection-required"
+                    ? "Reconnect before requesting a new Travel estimate."
+                    : `We could not calculate Travel from ${accommodationName}. Distances and durations are shown only from measured road estimates.`}
                 </p>
               </>
             )}

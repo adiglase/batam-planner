@@ -796,11 +796,12 @@ export class TripRepository {
   save(collection: TripCollection): boolean {
     if (!this.readable) return false;
     try {
-      this.storage().setItem(
-        TRIPS_KEY,
-        JSON.stringify({ version: 1, ...collection }),
-      );
-      return true;
+      const storage = this.storage();
+      const serialized = JSON.stringify({ version: 1, ...collection });
+      storage.setItem(TRIPS_KEY, serialized);
+      // Some privacy/storage implementations accept writes without retaining
+      // them. A save is successful only when the exact envelope is readable.
+      return storage.getItem(TRIPS_KEY) === serialized;
     } catch {
       return false;
     }

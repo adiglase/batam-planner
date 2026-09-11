@@ -2,6 +2,7 @@ import type { Destination } from "~/destinations/destination";
 import type { Coordinates } from "~/geography/coordinates";
 import { findFerryTerminal } from "~/geography/ferry-terminals";
 import type { RoutingProvider, TravelEstimate } from "~/routing/routing-provider";
+import { isRoutingFailure } from "~/routing/routing-provider";
 import {
   effectiveVisitMinutes,
   MAX_SELECTED_DESTINATIONS,
@@ -57,6 +58,9 @@ export type BuildFailureCode =
   | "excess-destination-count"
   | "unsupported-trip-length"
   | "ineligible-destination"
+  | "connection-required"
+  | "routing-quota"
+  | "routing-provider-unavailable"
   | "unavailable-route"
   | "insufficient-time";
 
@@ -705,10 +709,37 @@ export async function buildItinerary(
     if (multiDay && day.startAnchor && day.endAnchor && day.startAnchor.id !== day.endAnchor.id) pairs.set(estimateKey(day.startAnchor, day.endAnchor), [day.startAnchor, day.endAnchor]);
   }
   const estimates = new Map<string, TravelEstimate>();
-  await Promise.all([...pairs].map(async ([key, [origin, destination]]) => {
-    const value = await estimateLeg(origin, destination, trip, routingProvider);
-    if (value) estimates.set(key, value);
-  }));
+  try {
+    await Promise.all([...pairs].map(async ([key, [origin, destination]]) => {
+      const value = await estimateLeg(origin, destination, trip, routingProvider);
+      if (value) estimates.set(key, value);
+    }));
+  } catch (error) {
+    if (isRoutingFailure(error)) {
+      if (error.code === "connection-required") {
+        return {
+          ok: false,
+          code: "connection-required",
+          message: "A connection is required to calculate Travel. Your saved Trip and current Itinerary have not been changed.",
+          suggestions: [],
+        };
+      }
+      if (error.code === "quota-exceeded") {
+        return {
+          ok: false,
+          code: "routing-quota",
+          message: "Travel calculations are temporarily at capacity. Your current Itinerary has not been changed.",
+          suggestions: [],
+        };
+      }
+    }
+    return {
+      ok: false,
+      code: "routing-provider-unavailable",
+      message: "Travel calculations are temporarily unavailable. Your current Itinerary has not been changed.",
+      suggestions: [],
+    };
+  }
 
   const solution = await solve(trip, bounds, destinations, durations, estimates, false);
   if (!solution) {

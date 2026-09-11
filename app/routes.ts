@@ -4,6 +4,7 @@ export default [
   index("routes/home.tsx"),
   route("api/auth/*", "routes/auth-api.ts"),
   route("api/travel-estimate", "routes/travel-estimate-api.ts"),
+  route("api/connectivity", "routes/connectivity-api.ts"),
   route("owner/login", "routes/owner-login.tsx"),
   route("owner/callback", "routes/owner-callback.ts"),
   route("owner/logout", "routes/owner-logout.ts"),

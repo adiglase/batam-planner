@@ -146,5 +146,11 @@ export function useTrips(publishedDestinations: readonly Destination[]) {
       });
       return true;
     },
+    retrySave() {
+      if (!ready) return false;
+      const saved = repository.current!.save(current.current);
+      setFailed(!saved);
+      return saved;
+    },
   };
 }

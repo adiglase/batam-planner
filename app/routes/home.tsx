@@ -9,6 +9,8 @@ import {
   MapPinIcon,
   RotateCcwIcon,
   SearchIcon,
+  TriangleAlertIcon,
+  WifiOffIcon,
   XIcon,
 } from "lucide-react";
 import { Link } from "react-router";
@@ -18,7 +20,7 @@ import { useTrips } from "~/trips/use-trips";
 import { reopeningSurface } from "~/trips/trip-repository";
 import { DestinationSelection, TripSurface } from "~/trips/trip-controls";
 import type { TripControls } from "~/trips/trip-controls";
-import { Alert, AlertTitle } from "~/components/ui/alert";
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
@@ -84,6 +86,7 @@ import { isAccommodation } from "~/trips/trip-repository";
 import { browserRoutingProvider } from "~/routing/browser-routing-provider";
 import type { RoutingProvider } from "~/routing/routing-provider";
 import type { MapViewport } from "~/map/map-provider";
+import { useConnectivity } from "~/lib/use-connectivity";
 
 export function meta() {
   return [
@@ -125,6 +128,7 @@ type RestoreSnapshot = {
 export default function Home({ loaderData }: Route.ComponentProps) {
   const { destinations } = loaderData;
   const trips = useTrips(destinations);
+  const connectivity = useConnectivity();
   const [tripListOpen, setTripListOpen] = useState(false);
   const [activeSurface, setActiveSurface] = useState<Surface>("discover");
   const [pendingTripInput, setPendingTripInput] = useState<string | null>(null);
@@ -148,6 +152,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   const [split, setSplit] = useState<Split>({ desktop: 60, mobile: 45 });
   const [phoneLayout, setPhoneLayout] = useState(false);
   const [sessionRestored, setSessionRestored] = useState(false);
+  const [mapUnavailable, setMapUnavailable] = useState(false);
+  const [mapAttempt, setMapAttempt] = useState(0);
   const shellRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
   const discoverRegionRef = useRef<HTMLDivElement>(null);
@@ -532,6 +538,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     }));
   }
 
+  const handleMapAvailability = useCallback((available: boolean) => {
+    setMapUnavailable(!available);
+  }, []);
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -549,6 +559,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       <div
         ref={shellRef}
         className="workspace-shell"
+        data-map-unavailable={mapUnavailable || undefined}
         style={
           {
             "--desktop-map-share": `${split.desktop}%`,
@@ -558,6 +569,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       >
         <section className="map-region" aria-label="Batam Destination map">
           <ConfiguredMap
+            key={mapAttempt}
             markers={itineraryPresentation?.markers ?? mapMarkers}
             focusedElementId={
               itineraryPresentation
@@ -574,6 +586,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 ? setFocusedItineraryElement
                 : focusDestination
             }
+            onAvailabilityChange={handleMapAvailability}
           />
           {trips.editing && viewingDestination && (
             <div className="trip-map-selection">
@@ -711,7 +724,56 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             )}
             {trips.failed && (
               <Alert variant="destructive">
-                <AlertTitle>This trip isn’t being saved</AlertTitle>
+                <TriangleAlertIcon aria-hidden="true" />
+                <AlertTitle>This trip is not being saved</AlertTitle>
+                <AlertDescription>
+                  Your current Trip remains available on this page. Keep it open so you can inspect or manually recover the information.
+                </AlertDescription>
+                <AlertAction>
+                  <Button size="sm" variant="outline" onClick={trips.retrySave}>
+                    Retry
+                  </Button>
+                </AlertAction>
+              </Alert>
+            )}
+            {!connectivity.connected && (
+              <Alert variant="destructive">
+                <WifiOffIcon aria-hidden="true" />
+                <AlertTitle>Connection required</AlertTitle>
+                <AlertDescription>
+                  Saved Trip data is untouched. Reconnect to use maps and calculate Travel.
+                </AlertDescription>
+                <AlertAction>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={connectivity.checking}
+                    onClick={() => void connectivity.retry()}
+                  >
+                    {connectivity.checking ? "Checking…" : "Retry"}
+                  </Button>
+                </AlertAction>
+              </Alert>
+            )}
+            {mapUnavailable && (
+              <Alert>
+                <MapPinIcon aria-hidden="true" />
+                <AlertTitle>Map unavailable</AlertTitle>
+                <AlertDescription>
+                  Continue planning with Discover, Trip details, and Itinerary.
+                </AlertDescription>
+                <AlertAction>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setMapUnavailable(false);
+                      setMapAttempt((attempt) => attempt + 1);
+                    }}
+                  >
+                    Retry
+                  </Button>
+                </AlertAction>
               </Alert>
             )}
           </div>
@@ -799,6 +861,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                   onSelectDay={selectItineraryDay}
                   focusedElementId={focusedItineraryElement}
                   onFocusElement={setFocusedItineraryElement}
+                  connected={connectivity.connected}
+                  onRetryConnection={connectivity.retry}
                 />
               </div>
             </ScrollArea>

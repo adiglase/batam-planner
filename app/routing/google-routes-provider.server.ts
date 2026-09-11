@@ -3,6 +3,7 @@ import type {
   TransportMode,
   TravelWarning,
 } from "./routing-provider";
+import { RoutingFailure } from "./routing-provider";
 
 const GOOGLE_ROUTES_URL =
   "https://routes.googleapis.com/directions/v2:computeRoutes";
@@ -91,7 +92,8 @@ export function createGoogleRoutesProvider(
           },
           body: JSON.stringify(body),
         });
-        if (!response.ok) return null;
+        if (response.status === 429) throw new RoutingFailure("quota-exceeded");
+        if (!response.ok) throw new RoutingFailure("provider-unavailable");
         const data: unknown = await response.json();
         const route =
           data && typeof data === "object" && "routes" in data
@@ -124,8 +126,9 @@ export function createGoogleRoutesProvider(
           geometry,
           warnings: requiredWarning ? [requiredWarning] : [],
         };
-      } catch {
-        return null;
+      } catch (error) {
+        if (error instanceof RoutingFailure) throw error;
+        throw new RoutingFailure("provider-unavailable");
       }
     },
   };

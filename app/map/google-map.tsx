@@ -180,7 +180,11 @@ export function GoogleMap({
   onViewportChange,
   onOpenDestination,
   onFocusElement,
-}: MapPresentation & { apiKey: string }) {
+  onAvailabilityChange,
+}: MapPresentation & {
+  apiKey: string;
+  onAvailabilityChange?: (available: boolean) => void;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [unavailable, setUnavailable] = useState(false);
   const [chooser, setChooser] = useState<DestinationCluster | null>(null);
@@ -281,16 +285,20 @@ export function GoogleMap({
           );
         });
         setMapState({ maps, map });
+        onAvailabilityChange?.(true);
       })
       .catch(() => {
-        if (active) setUnavailable(true);
+        if (active) {
+          setUnavailable(true);
+          onAvailabilityChange?.(false);
+        }
       });
 
     return () => {
       active = false;
       idleListener?.remove();
     };
-  }, [apiKey]);
+  }, [apiKey, onAvailabilityChange]);
 
   useEffect(() => {
     if (!mapState) return;

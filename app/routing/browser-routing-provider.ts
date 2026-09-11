@@ -1,6 +1,16 @@
-import type { RoutingProvider, TravelEstimate } from "./routing-provider";
+import type { RoutingFailureCode, RoutingProvider, TravelEstimate } from "./routing-provider";
+import { RoutingFailure } from "./routing-provider";
 
-type TravelEstimateResponse = { estimate: TravelEstimate | null };
+type TravelEstimateResponse = {
+  estimate: TravelEstimate | null;
+  failure?: RoutingFailureCode;
+};
+
+function isRoutingFailureCode(value: unknown): value is RoutingFailureCode {
+  return value === "connection-required" ||
+    value === "quota-exceeded" ||
+    value === "provider-unavailable";
+}
 
 function isTravelWarnings(value: unknown): boolean {
   return (
@@ -23,7 +33,11 @@ function isTravelEstimateResponse(
   if (!value || typeof value !== "object" || !("estimate" in value)) {
     return false;
   }
-  const estimate = (value as TravelEstimateResponse).estimate;
+  const response = value as TravelEstimateResponse;
+  if (response.failure !== undefined && !isRoutingFailureCode(response.failure)) {
+    return false;
+  }
+  const estimate = response.estimate;
   if (estimate === null) return true;
   return (
     !!estimate &&
@@ -42,20 +56,28 @@ export function createBrowserRoutingProvider(
 ): RoutingProvider {
   return {
     async estimateTravel(input) {
+      let response: Response;
       try {
-        const response = await fetcher("/api/travel-estimate", {
+        response = await fetcher("/api/travel-estimate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(input),
         });
-        if (!response.ok) return null;
-        const data: unknown = await response.json();
-        return isTravelEstimateResponse(data, input.mode)
-          ? data.estimate
-          : null;
       } catch {
-        return null;
+        throw new RoutingFailure("connection-required");
       }
+      let data: unknown;
+      try {
+        data = await response.json();
+      } catch {
+        throw new RoutingFailure("provider-unavailable");
+      }
+      if (!isTravelEstimateResponse(data, input.mode)) {
+        throw new RoutingFailure("provider-unavailable");
+      }
+      if (data.failure) throw new RoutingFailure(data.failure);
+      if (!response.ok) throw new RoutingFailure("provider-unavailable");
+      return data.estimate;
     },
   };
 }

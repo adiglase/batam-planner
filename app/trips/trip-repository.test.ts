@@ -229,6 +229,16 @@ describe("browser-local Trips", () => {
     expect(full.save({ trips: [trip], activeTripId: trip.id })).toBe(false);
     expect(trip.destinations).toHaveLength(1);
   });
+  it("does not report success when storage silently discards a write", () => {
+    const repository = new TripRepository(() => ({
+      getItem: () => null,
+      setItem: () => undefined,
+    }));
+    repository.load();
+    expect(
+      repository.save({ trips: [createTrip("trip")], activeTripId: "trip" }),
+    ).toBe(false);
+  });
 });
 
 describe("progressive Trip constraints", () => {

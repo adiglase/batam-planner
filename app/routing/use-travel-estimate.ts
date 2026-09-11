@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
 import type { Coordinates } from "~/geography/coordinates";
 import type {
+  RoutingFailureCode,
   RoutingProvider,
   TransportMode,
   TravelEstimate,
 } from "~/routing/routing-provider";
+import { isRoutingFailure } from "~/routing/routing-provider";
 
 export type TravelEstimateStatus =
   | { state: "idle" }
   | { state: "loading" }
   | { state: "ready"; estimate: TravelEstimate }
-  | { state: "unavailable" };
+  | { state: "unavailable"; reason: RoutingFailureCode | "unavailable-route" };
 
 /**
  * Requests one traffic-unaware Travel estimate from the Accommodation to
@@ -63,11 +65,20 @@ export function useTravelEstimate({
       .then((estimate) => {
         if (cancelled) return;
         setStatus(
-          estimate ? { state: "ready", estimate } : { state: "unavailable" },
+          estimate
+            ? { state: "ready", estimate }
+            : { state: "unavailable", reason: "unavailable-route" },
         );
       })
-      .catch(() => {
-        if (!cancelled) setStatus({ state: "unavailable" });
+      .catch((error) => {
+        if (!cancelled) {
+          setStatus({
+            state: "unavailable",
+            reason: isRoutingFailure(error)
+              ? error.code
+              : "provider-unavailable",
+          });
+        }
       });
     return () => {
       cancelled = true;

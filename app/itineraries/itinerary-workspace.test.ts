@@ -389,3 +389,94 @@ describe("reopening an Itinerary-ready Trip", () => {
     expect(reopened.itinerary).toEqual(itinerary);
   });
 });
+
+describe("explicit Itinerary Rebuilds", () => {
+  it("preserves the selected-day result through a failed Rebuild and replaces it only after success", async () => {
+    const initial = twoDayTrip();
+    const firstBuild = await buildItinerary(initial, routing());
+    expect(firstBuild.ok).toBe(true);
+    if (!firstBuild.ok) return;
+
+    const ready = storeBuiltItinerary(initial, firstBuild.itinerary);
+    const selectedDayBeforeEdit = itineraryDayPresentation(
+      ready.itinerary!,
+      1,
+      itineraryCoordinates(ready),
+    );
+    expect(tripStatus(ready)).toBe("Itinerary ready");
+
+    // This is the same change a Visitor makes through the Daily window
+    // control. It saves new inputs while retaining the last feasible result.
+    const infeasible = setDailyWindow(ready, "2026-06-02", "end", "09:20");
+    expect(tripStatus(infeasible)).toBe("Needs rebuilding");
+    expect(infeasible.itinerary).toBe(ready.itinerary);
+    expect(
+      itineraryDayPresentation(
+        infeasible.itinerary!,
+        1,
+        itineraryCoordinates(infeasible),
+      ),
+    ).toEqual(selectedDayBeforeEdit);
+
+    const storage = memoryStorage();
+    const repository = new TripRepository(() => storage);
+    repository.load();
+    expect(
+      repository.save({ trips: [infeasible], activeTripId: infeasible.id }),
+    ).toBe(true);
+    const reopenedNeedsRebuilding = new TripRepository(
+      () => storage,
+    ).load().collection.trips[0];
+    expect(reopeningSurface(reopenedNeedsRebuilding)).toBe("itinerary");
+    expect(tripStatus(reopenedNeedsRebuilding)).toBe("Needs rebuilding");
+    expect(reopenedNeedsRebuilding.itinerary).toEqual(ready.itinerary);
+
+    const failedRebuild = await buildItinerary(
+      reopenedNeedsRebuilding,
+      routing(),
+    );
+    expect(failedRebuild).toMatchObject({
+      ok: false,
+      code: "insufficient-time",
+    });
+    expect(failedRebuild).not.toHaveProperty("itinerary");
+    expect(reopenedNeedsRebuilding.itinerary).toEqual(ready.itinerary);
+    expect(
+      itineraryDayPresentation(
+        reopenedNeedsRebuilding.itinerary!,
+        1,
+        itineraryCoordinates(reopenedNeedsRebuilding),
+      ),
+    ).toEqual(selectedDayBeforeEdit);
+
+    // Correcting the same Visitor-facing input still leaves the previous
+    // Itinerary in place until the explicit Rebuild succeeds.
+    const corrected = setDailyWindow(
+      reopenedNeedsRebuilding,
+      "2026-06-02",
+      "end",
+      "10:30",
+    );
+    expect(tripStatus(corrected)).toBe("Needs rebuilding");
+    expect(corrected.itinerary).toBe(reopenedNeedsRebuilding.itinerary);
+
+    const successfulRebuild = await buildItinerary(corrected, routing());
+    expect(successfulRebuild.ok).toBe(true);
+    if (!successfulRebuild.ok) return;
+    const rebuilt = storeBuiltItinerary(
+      corrected,
+      successfulRebuild.itinerary,
+    );
+    expect(tripStatus(rebuilt)).toBe("Itinerary ready");
+    expect(rebuilt.itinerary).toBe(successfulRebuild.itinerary);
+    expect(rebuilt.itinerary).not.toBe(ready.itinerary);
+
+    expect(
+      repository.save({ trips: [rebuilt], activeTripId: rebuilt.id }),
+    ).toBe(true);
+    const reopened = new TripRepository(() => storage).load().collection.trips[0];
+    expect(reopeningSurface(reopened)).toBe("itinerary");
+    expect(tripStatus(reopened)).toBe("Itinerary ready");
+    expect(reopened.itinerary).toEqual(successfulRebuild.itinerary);
+  });
+});
